@@ -1,0 +1,139 @@
+Build a standalone Nexus University Admissions Admin Dashboard — a modern, premium web application for university administrators to review and manage student applications. This is a separate project from the main Nexus Application Portal.
+Tech Stack
+- React 18 + TypeScript + Vite
+- Tailwind CSS + shadcn/ui component library
+- TanStack React Query for server state
+- Recharts for data visualization
+- React Router DOM v6 for routing
+- Zod + React Hook Form for form validation
+- lucide-react for icons
+- sonner for toast notifications
+Design System
+This dashboard follows a luxury editorial / warm minimal aesthetic — NOT the typical blue SaaS dashboard. The design language is:
+Colors:
+- Primary background: hsl(60, 7%, 95%) — warm off-white/parchment (NOT white)
+- Foreground text: hsl(60, 5%, 11%) — near-black with warm undertone (NOT pure black)
+- Accent: hsl(38, 52%, 45%) — warm amber/gold — THE signature color for all CTAs, active states, focus rings
+- Secondary: hsl(60, 3%, 82%) — light warm gray for borders, muted surfaces
+- Muted foreground: hsl(60, 3%, 45%) — medium warm gray for descriptions
+- Destructive: hsl(0, 84.2%, 60.2%) — vivid red for delete/reject actions
+- Border radius: 20px on everything — buttons, cards, inputs, images
+Typography:
+- Headings: Cormorant Garamond (serif) at weight 300 (light) — sizes 5xl to 7xl for page titles
+- Body: Inter (sans-serif) at weight 300-400
+- Labels: text-[10px] tracking-[0.2em] uppercase — editorial caption style
+- Section headers: <p className="text-xs tracking-[0.3em] uppercase text-accent">Category</p> followed by <h1 className="font-heading text-5xl font-light">Title</h1>
+Interactions:
+- Cards lift on hover with subtle translateY(-4px) transition over 500ms
+- Buttons use duration-300 transitions
+- Use cubic-bezier(0.23, 1, 0.32, 1) easing for premium feel
+- Loading states use skeleton placeholders with animate-pulse
+Backend API
+The dashboard connects to a Spring Boot backend at http://localhost:8080 with these endpoints:
+Auth:
+- POST /api/v1/admin/auth/login — body: { email, password } → returns { token, email, fullName }
+- GET /api/v1/admin/auth/me — header: Authorization: Bearer <token> → returns { email, fullName }
+Dashboard:
+- GET /api/v1/admin/dashboard/stats — returns { totalApplications, pendingReview, admitted, rejected, waitlisted, draft, monthlyTrend: { "Jan 2024": 12, ... } }
+Applications:
+- GET /api/v1/admin/applications?status=&search=&page=0&size=10 — paginated list
+- GET /api/v1/admin/applications/{id} — single application detail
+- PUT /api/v1/admin/applications/{id}/review — body: { reviewStatus: "admitted"|"rejected"|"waitlisted", notes: "..." }
+Application object shape:
+{
+  id: number;
+  prn: string;
+  firstName: string;
+  lastName: string;
+  otherNames: string;
+  email: string;
+  phoneNumber: string;
+  gender: string;
+  dateOfBirth: string;
+  nationality: string;
+  district: string;
+  subcounty: string;
+  village: string;
+  programChoice1: string;
+  programChoice2: string;
+  programChoice3: string;
+  studyMode: string;
+  academicYear: string;
+  semester: string;
+  emailVerified: boolean;
+  status: "DRAFT" | "SUBMITTED" | "ADMITTED" | "REJECTED" | "WAITLISTED";
+  reviewStatus: string;
+  submittedAt: string;
+  reviewedAt: string;
+  reviewerNotes: string;
+  uceResult: string;  // JSON
+  uaceResult: string;  // JSON
+  documents: string;  // JSON
+  extras: string;  // JSON
+  feePaid: number;
+  feeRequired: number;
+  feeCurrency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+Pages to Build
+1. Login Page (/admin/login)
+- Full-screen split layout: left panel = dark bg-primary with brand logo (letter "N" in amber circle), school name "Nexus University", tagline "Admissions Management". Right panel = login form with email + password fields, amber submit button.
+- On success: store JWT in localStorage as nap_admin_token, redirect to /admin
+2. Admin Layout (wrapper for all authenticated pages)
+- Sidebar (left, 280px, dark bg-primary): Brand logo + name at top, nav items (Dashboard, Applications) with amber active indicator, Sign Out button at bottom. Collapsible to icon-only on mobile via hamburger menu.
+- Header (sticky top): Breadcrumb trail based on URL path, admin avatar circle on right.
+- Main content area: bg-background with p-8 padding.
+3. Dashboard (/admin)
+- Page header: "Overview" accent label + "Dashboard" in large Cormorant Garamond
+- 4 stat cards in a row: Total Applications, Pending Review (amber tint), Admitted (green tint), Rejected (red tint). Each card shows large number + label. Numbers should animate count-up on load.
+- Monthly trend chart: Recharts AreaChart with amber line showing applications over last 6 months
+- Side panel: Waitlisted count + Drafts count
+- Recent applications table: Last 5 rows with applicant name, program, status badge, date, "View" link
+4. Applications List (/admin/applications)
+- Page header: "Review & Manage" accent label + "Applications"
+- Filter bar: Search input (name/email/PRN) + Status dropdown (All, Submitted, Admitted, Rejected, Waitlisted, Draft)
+- Table columns: PRN, Applicant name, Email, Program, Status (colored badge), Submitted date, Review button
+- Status badge colors: SUBMITTED = amber, ADMITTED = green, REJECTED = red, WAITLISTED = amber-gray, DRAFT = gray
+- Pagination at bottom with page numbers
+- Empty state: centered icon + "No applications found" message
+5. Application Detail (/admin/applications/:id)
+- Back link to applications list
+- Header: Applicant name + email + large status badge
+- Two-column layout:
+- Left (60%): Card sections for Personal Info (name, email, phone, gender, DOB, nationality, district), Academic Details (program choices, study mode, year, semester, UACE/UCE results as formatted JSON), Documents (parsed JSON), Payment (PRN, fees)
+- Right (40%, sticky): Status badge, timeline (created → submitted → reviewed dates), reviewer notes display, and if status is SUBMITTED: review notes textarea + 3 action buttons (Admit = green, Waitlist = amber, Reject = red outline). Clicking any action shows a confirmation dialog modal before executing.
+- Only SUBMITTED applications show the review action buttons
+Status Colors for Badges
+DRAFT:      bg-muted text-muted-foreground
+SUBMITTED:  bg-accent/10 text-accent border-accent/20
+ADMITTED:   bg-green-50 text-green-700 border-green-200
+REJECTED:   bg-red-50 text-red-700 border-red-200
+WAITLISTED: bg-amber-50 text-amber-700 border-amber-200
+Key Implementation Details
+- All API calls use Authorization: Bearer <token> header
+- On 401 response: clear token, redirect to /admin/login
+- JWT is stored in localStorage as nap_admin_token
+- Protected routes check token validity via GET /api/v1/admin/auth/me on mount
+- Loading states show skeleton placeholders (matching the card/table shape with animate-pulse)
+- Default admin credentials: admin@nexus.edu / admin123 (shown as hint on login page)
+- Applications that are NOT in SUBMITTED status should not show review buttons
+- Review confirmation dialog should warn "This action cannot be undone"
+Project Structure
+src/
+  lib/
+    adminApi.ts          # API client with auth headers
+    utils.ts             # cn() utility (clsx + tailwind-merge)
+  components/
+    admin/
+      ProtectedRoute.tsx # Auth guard
+    ui/                  # shadcn/ui components
+  pages/
+    admin/
+      AdminLoginPage.tsx
+      AdminLayout.tsx
+      AdminDashboardPage.tsx
+      AdminApplicationsPage.tsx
+      AdminApplicationDetailPage.tsx
+  App.tsx                # Routes
+  index.css              # CSS variables, fonts, theme

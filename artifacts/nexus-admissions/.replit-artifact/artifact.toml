@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Nexus Admissions Dashboard"
+description = "A premium admissions administration dashboard for Nexus University staff to review, filter, and manage student applications."
+version = "1.0.0"
+id = "artifacts/nexus-admissions"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18548
+
+[services.development]
+run = "pnpm --filter @workspace/nexus-admissions run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/nexus-admissions", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/nexus-admissions/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18548"
+BASE_PATH = "/"

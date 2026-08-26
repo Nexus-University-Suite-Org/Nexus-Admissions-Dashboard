@@ -5,7 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AdminIdentity } from './adminIdentity';
 
-export interface HealthStatus {
-  status: string;
-}
+export type AdminSession = AdminIdentity & {
+  token: string;
+};

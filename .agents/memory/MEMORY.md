@@ -1,0 +1,1 @@
+- [OpenAPI codegen compatibility](api-codegen-compatibility.md) — generated validators currently require Zod 3-compatible schema annotations.

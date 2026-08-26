@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: admin-auth
+    description: Admin authentication
+  - name: admin-dashboard
+    description: Admissions overview
+  - name: admin-applications
+    description: Student application review
 paths:
   /healthz:
     get:
@@ -24,7 +30,196 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /v1/admin/auth/login:
+    post:
+      operationId: adminLogin
+      tags: [admin-auth]
+      summary: Sign in an admissions administrator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginInput"
+      responses:
+        "200":
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSession"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/auth/me:
+    get:
+      operationId: getAdminMe
+      tags: [admin-auth]
+      summary: Get the current administrator
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current administrator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminIdentity"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/dashboard/stats:
+    get:
+      operationId: getAdminDashboardStats
+      tags: [admin-dashboard]
+      summary: Get admissions overview metrics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardStats"
+  /v1/admin/applications:
+    get:
+      operationId: getAdminApplications
+      tags: [admin-applications]
+      summary: List student applications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ALL, DRAFT, SUBMITTED, ADMITTED, REJECTED, WAITLISTED]
+            default: ALL
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: number
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 50
+            default: 10
+      responses:
+        "200":
+          description: Paginated applications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedApplications"
+  /v1/admin/applications/recent:
+    get:
+      operationId: getAdminRecentApplications
+      tags: [admin-applications]
+      summary: Get the most recently submitted applications
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 10
+            default: 5
+      responses:
+        "200":
+          description: Recent applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Application"
+  /v1/admin/applications/{id}:
+    get:
+      operationId: getAdminApplication
+      tags: [admin-applications]
+      summary: Get one student application
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Application detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/applications/{id}/review:
+    put:
+      operationId: reviewAdminApplication
+      tags: [admin-applications]
+      summary: Review a submitted application
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplicationReviewInput"
+      responses:
+        "200":
+          description: Reviewed application
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Application"
+        "400":
+          description: Application cannot be reviewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +228,165 @@ components:
           type: string
       required:
         - status
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+    AdminLoginInput:
+      type: object
+      properties:
+        email:
+          type: string
+          pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        password:
+          type: string
+          minLength: 1
+      required: [email, password]
+    AdminIdentity:
+      type: object
+      properties:
+        email:
+          type: string
+          pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        fullName:
+          type: string
+      required: [email, fullName]
+    AdminSession:
+      allOf:
+        - $ref: "#/components/schemas/AdminIdentity"
+        - type: object
+          properties:
+            token:
+              type: string
+          required: [token]
+    MonthlyTrend:
+      type: object
+      additionalProperties:
+        type: number
+    AdminDashboardStats:
+      type: object
+      properties:
+        totalApplications:
+          type: number
+        pendingReview:
+          type: number
+        admitted:
+          type: number
+        rejected:
+          type: number
+        waitlisted:
+          type: number
+        draft:
+          type: number
+        monthlyTrend:
+          $ref: "#/components/schemas/MonthlyTrend"
+      required:
+        - totalApplications
+        - pendingReview
+        - admitted
+        - rejected
+        - waitlisted
+        - draft
+        - monthlyTrend
+    Application:
+      type: object
+      properties:
+        id: { type: number }
+        prn: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+        otherNames: { type: string }
+        email: { type: string, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" }
+        phoneNumber: { type: string }
+        gender: { type: string }
+        dateOfBirth: { type: string }
+        nationality: { type: string }
+        district: { type: string }
+        subcounty: { type: string }
+        village: { type: string }
+        programChoice1: { type: string }
+        programChoice2: { type: string }
+        programChoice3: { type: string }
+        studyMode: { type: string }
+        academicYear: { type: string }
+        semester: { type: string }
+        emailVerified: { type: boolean }
+        status:
+          type: string
+          enum: [DRAFT, SUBMITTED, ADMITTED, REJECTED, WAITLISTED]
+        reviewStatus: { type: string }
+        submittedAt: { type: ["string", "null"] }
+        reviewedAt: { type: ["string", "null"] }
+        reviewerNotes: { type: ["string", "null"] }
+        uceResult: { type: string }
+        uaceResult: { type: string }
+        documents: { type: string }
+        extras: { type: string }
+        feePaid: { type: number }
+        feeRequired: { type: number }
+        feeCurrency: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+      required:
+        - id
+        - prn
+        - firstName
+        - lastName
+        - otherNames
+        - email
+        - phoneNumber
+        - gender
+        - dateOfBirth
+        - nationality
+        - district
+        - subcounty
+        - village
+        - programChoice1
+        - programChoice2
+        - programChoice3
+        - studyMode
+        - academicYear
+        - semester
+        - emailVerified
+        - status
+        - reviewStatus
+        - submittedAt
+        - reviewedAt
+        - reviewerNotes
+        - uceResult
+        - uaceResult
+        - documents
+        - extras
+        - feePaid
+        - feeRequired
+        - feeCurrency
+        - createdAt
+        - updatedAt
+    PaginatedApplications:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/Application"
+        page:
+          type: number
+        size:
+          type: number
+        totalElements:
+          type: number
+        totalPages:
+          type: number
+      required: [content, page, size, totalElements, totalPages]
+    ApplicationReviewInput:
+      type: object
+      properties:
+        reviewStatus:
+          type: string
+          enum: [admitted, rejected, waitlisted]
+        notes:
+          type: string
+      required: [reviewStatus, notes]
 
