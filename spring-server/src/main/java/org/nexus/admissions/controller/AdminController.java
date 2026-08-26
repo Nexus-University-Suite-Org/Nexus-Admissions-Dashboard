@@ -1,0 +1,76 @@
+package org.nexus.admissions.controller;
+
+import jakarta.validation.Valid;
+import java.util.List;
+import org.nexus.admissions.configuration.JwtAuthFilter;
+import org.nexus.admissions.dto.AdminLoginRequest;
+import org.nexus.admissions.dto.AdminLoginResponse;
+import org.nexus.admissions.dto.ApplicationResponse;
+import org.nexus.admissions.dto.DashboardStatsResponse;
+import org.nexus.admissions.dto.PaginatedApplicationsResponse;
+import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.facade.AdminFacade;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/admin")
+public class AdminController {
+
+    private final AdminFacade adminFacade;
+
+    public AdminController(AdminFacade adminFacade) {
+        this.adminFacade = adminFacade;
+    }
+
+    @PostMapping("/auth/login")
+    public ResponseEntity<AdminLoginResponse> login(@Valid @RequestBody AdminLoginRequest request) {
+        return ResponseEntity.ok(adminFacade.login(request));
+    }
+
+    @GetMapping("/auth/me")
+    public ResponseEntity<AdminLoginResponse> me(Authentication authentication) {
+        JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
+        return ResponseEntity.ok(new AdminLoginResponse(null, principal.email(), null));
+    }
+
+    @GetMapping("/dashboard/stats")
+    public ResponseEntity<DashboardStatsResponse> dashboardStats() {
+        return ResponseEntity.ok(adminFacade.getDashboardStats());
+    }
+
+    @GetMapping("/applications")
+    public ResponseEntity<PaginatedApplicationsResponse> getApplications(
+            @RequestParam(required = false, defaultValue = "ALL") String status,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return ResponseEntity.ok(adminFacade.getApplications(status, search, page, size));
+    }
+
+    @GetMapping("/applications/recent")
+    public ResponseEntity<List<ApplicationResponse>> getRecentApplications(
+            @RequestParam(defaultValue = "5") int limit) {
+        return ResponseEntity.ok(adminFacade.getRecentApplications(Math.min(limit, 10)));
+    }
+
+    @GetMapping("/applications/{id}")
+    public ResponseEntity<ApplicationResponse> getApplication(@PathVariable Long id) {
+        return ResponseEntity.ok(adminFacade.getApplicationById(id));
+    }
+
+    @PutMapping("/applications/{id}/review")
+    public ResponseEntity<ApplicationResponse> reviewApplication(
+            @PathVariable Long id,
+            @Valid @RequestBody ReviewRequest request) {
+        return ResponseEntity.ok(adminFacade.reviewApplication(id, request));
+    }
+}

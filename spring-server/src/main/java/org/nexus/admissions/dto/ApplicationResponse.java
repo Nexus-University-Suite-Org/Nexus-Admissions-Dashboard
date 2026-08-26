@@ -1,0 +1,41 @@
+package org.nexus.admissions.dto;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+public record ApplicationResponse(
+        Long id,
+        String prn,
+        String firstName,
+        String lastName,
+        String otherNames,
+        String email,
+        String phoneNumber,
+        String gender,
+        LocalDateTime dateOfBirth,
+        String nationality,
+        String district,
+        String subcounty,
+        String village,
+        String programChoice1,
+        String programChoice2,
+        String programChoice3,
+        String studyMode,
+        String academicYear,
+        String semester,
+        Boolean emailVerified,
+        String status,
+        String reviewStatus,
+        LocalDateTime submittedAt,
+        LocalDateTime reviewedAt,
+        String reviewerNotes,
+        String uceResult,
+        String uaceResult,
+        String documents,
+        String extras,
+        BigDecimal feePaid,
+        BigDecimal feeRequired,
+        String feeCurrency,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+) {}
