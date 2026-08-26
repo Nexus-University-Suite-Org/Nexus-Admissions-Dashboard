@@ -2,3 +2,5 @@ target/
 *.class
 *.jar
 .env
+*.log
+*.err
