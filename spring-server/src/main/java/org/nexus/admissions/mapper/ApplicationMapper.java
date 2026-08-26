@@ -17,7 +17,7 @@ public final class ApplicationMapper {
                 entity.getEmail(),
                 entity.getPhoneNumber(),
                 entity.getGender(),
-                entity.getDateOfBirth(),
+                entity.getDateOfBirth() != null ? entity.getDateOfBirth().toString() : null,
                 entity.getNationality(),
                 entity.getDistrict(),
                 entity.getSubcounty(),
@@ -31,8 +31,8 @@ public final class ApplicationMapper {
                 entity.getEmailVerified(),
                 entity.getStatus(),
                 entity.getReviewStatus(),
-                entity.getSubmittedAt(),
-                entity.getReviewedAt(),
+                entity.getSubmittedAt() != null ? entity.getSubmittedAt().toString() : null,
+                entity.getReviewedAt() != null ? entity.getReviewedAt().toString() : null,
                 entity.getReviewerNotes(),
                 entity.getUceResult(),
                 entity.getUaceResult(),
@@ -41,8 +41,8 @@ public final class ApplicationMapper {
                 entity.getFeePaid(),
                 entity.getFeeRequired(),
                 entity.getFeeCurrency(),
-                entity.getCreatedAt(),
-                entity.getUpdatedAt()
+                entity.getCreatedAt() != null ? entity.getCreatedAt().toString() : null,
+                entity.getUpdatedAt() != null ? entity.getUpdatedAt().toString() : null
         );
     }
 }

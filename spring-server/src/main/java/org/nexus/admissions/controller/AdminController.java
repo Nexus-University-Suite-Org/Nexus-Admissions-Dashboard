@@ -39,7 +39,7 @@ public class AdminController {
     @GetMapping("/auth/me")
     public ResponseEntity<AdminLoginResponse> me(Authentication authentication) {
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        return ResponseEntity.ok(new AdminLoginResponse(null, principal.email(), null));
+        return ResponseEntity.ok(adminFacade.me(principal.id()));
     }
 
     @GetMapping("/dashboard/stats")

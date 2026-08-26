@@ -4,9 +4,11 @@ import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.nexus.admissions.configuration.JwtUtil;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
@@ -14,12 +16,9 @@ import org.nexus.admissions.dto.ApplicationResponse;
 import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.ReviewRequest;
-import org.nexus.admissions.mapper.ApplicationMapper;
 import org.nexus.admissions.model.Admin;
-import org.nexus.admissions.model.Application;
 import org.nexus.admissions.service.AdminService;
-import org.nexus.admissions.service.ApplicationService;
-import org.springframework.data.domain.Page;
+import org.nexus.admissions.service.NapBackendClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -27,16 +26,16 @@ import org.springframework.stereotype.Service;
 public class AdminFacade {
 
     private final AdminService adminService;
-    private final ApplicationService applicationService;
+    private final NapBackendClient napClient;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
     public AdminFacade(AdminService adminService,
-                       ApplicationService applicationService,
+                       NapBackendClient napClient,
                        PasswordEncoder passwordEncoder,
                        JwtUtil jwtUtil) {
         this.adminService = adminService;
-        this.applicationService = applicationService;
+        this.napClient = napClient;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
     }
@@ -63,21 +62,31 @@ public class AdminFacade {
 
     @Transactional
     public DashboardStatsResponse getDashboardStats() {
-        long total = applicationService.countAll();
-        long pending = applicationService.countByStatus("SUBMITTED");
-        long admitted = applicationService.countByStatus("ADMITTED");
-        long rejected = applicationService.countByStatus("REJECTED");
-        long waitlisted = applicationService.countByStatus("WAITLISTED");
-        long draft = applicationService.countByStatus("DRAFT");
+        List<NapBackendClient.NapApplication> all = napClient.fetchAll();
+
+        long total = all.size();
+        long pending = countByStatus(all, "SUBMITTED");
+        long admitted = countByStatus(all, "ADMITTED");
+        long rejected = countByStatus(all, "REJECTED");
+        long waitlisted = countByStatus(all, "WAITLISTED");
+        long draft = countByStatus(all, "DRAFT");
 
         Map<String, Long> monthlyTrend = new LinkedHashMap<>();
         LocalDateTime now = LocalDateTime.now();
         for (int i = 5; i >= 0; i--) {
             LocalDate month = now.minusMonths(i).toLocalDate();
             String key = month.format(DateTimeFormatter.ofPattern("MMM yyyy"));
-            LocalDateTime startOfMonth = month.withDayOfMonth(1).atStartOfDay();
-            LocalDateTime endOfMonth = month.withDayOfMonth(month.lengthOfMonth()).atTime(23, 59, 59);
-            long count = applicationService.countAll();
+            long count = all.stream()
+                    .filter(a -> {
+                        if (a.createdAt() == null || a.createdAt().isBlank()) return false;
+                        try {
+                            LocalDate created = LocalDate.parse(a.createdAt().substring(0, 10));
+                            return created.getMonth() == month.getMonth() && created.getYear() == month.getYear();
+                        } catch (Exception e) {
+                            return false;
+                        }
+                    })
+                    .count();
             monthlyTrend.put(key, count);
         }
 
@@ -86,55 +95,81 @@ public class AdminFacade {
 
     @Transactional
     public PaginatedApplicationsResponse getApplications(String status, String search, int page, int size) {
-        Page<Application> result = applicationService.findFiltered(status, search, page, size);
-        List<ApplicationResponse> content = result.getContent().stream()
-                .map(ApplicationMapper::toDto)
+        List<NapBackendClient.NapApplication> all = napClient.fetchAll();
+
+        List<NapBackendClient.NapApplication> filtered = all.stream()
+                .filter(a -> (status == null || "ALL".equalsIgnoreCase(status) || status.equalsIgnoreCase(a.status())))
+                .filter(a -> (search == null || search.isBlank()
+                        || matchesSearch(a, search)))
+                .sorted(Comparator.comparing(
+                        (NapBackendClient.NapApplication a) -> a.createdAt() != null ? a.createdAt() : "")
+                        .reversed())
                 .toList();
-        return new PaginatedApplicationsResponse(
-                content,
-                result.getNumber(),
-                result.getSize(),
-                result.getTotalElements(),
-                result.getTotalPages()
-        );
+
+        long totalElements = filtered.size();
+        int totalPages = (int) Math.ceil((double) totalElements / size);
+        int fromIndex = page * size;
+        int toIndex = Math.min(fromIndex + size, filtered.size());
+
+        List<ApplicationResponse> content = filtered.subList(fromIndex, toIndex).stream()
+                .map(this::toDto)
+                .toList();
+
+        return new PaginatedApplicationsResponse(content, page, size, totalElements, totalPages);
     }
 
     @Transactional
     public List<ApplicationResponse> getRecentApplications(int limit) {
-        return applicationService.findRecent(limit).stream()
-                .map(ApplicationMapper::toDto)
+        List<NapBackendClient.NapApplication> all = napClient.fetchAll();
+
+        return all.stream()
+                .filter(a -> a.submittedAt() != null)
+                .sorted(Comparator.comparing(NapBackendClient.NapApplication::submittedAt).reversed())
+                .limit(Math.min(limit, 10))
+                .map(this::toDto)
                 .toList();
     }
 
     @Transactional
     public ApplicationResponse getApplicationById(Long id) {
-        Application app = applicationService.findById(id)
-                .orElseThrow(() -> new RuntimeException("Application not found."));
-        return ApplicationMapper.toDto(app);
+        NapBackendClient.NapApplication app = napClient.fetchById(id);
+        return toDto(app);
     }
 
     @Transactional
     public ApplicationResponse reviewApplication(Long id, ReviewRequest request) {
-        Application app = applicationService.findById(id)
-                .orElseThrow(() -> new RuntimeException("Application not found."));
-
-        if (!"SUBMITTED".equals(app.getStatus())) {
-            throw new RuntimeException("Only submitted applications can be reviewed.");
-        }
-
         String reviewStatus = request.reviewStatus();
-        app.setReviewStatus(reviewStatus.charAt(0) + reviewStatus.substring(1));
-        app.setReviewerNotes(request.notes() != null ? request.notes() : null);
-        app.setReviewedAt(LocalDateTime.now());
+        String notes = request.notes() != null ? request.notes() : null;
 
-        switch (reviewStatus) {
-            case "admitted" -> app.setStatus("ADMITTED");
-            case "rejected" -> app.setStatus("REJECTED");
-            case "waitlisted" -> app.setStatus("WAITLISTED");
-            default -> throw new RuntimeException("Invalid review status: " + reviewStatus);
-        }
+        NapBackendClient.NapApplication updated = napClient.reviewApplication(id, reviewStatus, notes);
+        return toDto(updated);
+    }
 
-        Application updated = applicationService.save(app);
-        return ApplicationMapper.toDto(updated);
+    private boolean matchesSearch(NapBackendClient.NapApplication a, String search) {
+        String lower = search.toLowerCase();
+        return (a.firstName() != null && a.firstName().toLowerCase().contains(lower))
+                || (a.lastName() != null && a.lastName().toLowerCase().contains(lower))
+                || (a.email() != null && a.email().toLowerCase().contains(lower))
+                || (a.prn() != null && a.prn().toLowerCase().contains(lower))
+                || (a.programChoice1() != null && a.programChoice1().toLowerCase().contains(lower));
+    }
+
+    private long countByStatus(List<NapBackendClient.NapApplication> all, String status) {
+        return all.stream().filter(a -> status.equalsIgnoreCase(a.status())).count();
+    }
+
+    private ApplicationResponse toDto(NapBackendClient.NapApplication a) {
+        return new ApplicationResponse(
+                a.id(), a.prn(), a.firstName(), a.lastName(), a.otherNames(),
+                a.email(), a.phoneNumber(), a.gender(), a.dateOfBirth(),
+                a.nationality(), a.district(), a.subcounty(), a.village(),
+                a.programChoice1(), a.programChoice2(), a.programChoice3(),
+                a.studyMode(), a.academicYear(), a.semester(),
+                a.emailVerified(), a.status(), a.reviewStatus(),
+                a.submittedAt(), a.reviewedAt(), a.reviewerNotes(),
+                a.uceResult(), a.uaceResult(), a.documents(), a.extras(),
+                a.feePaid(), a.feeRequired(), a.feeCurrency(),
+                a.createdAt(), a.updatedAt()
+        );
     }
 }

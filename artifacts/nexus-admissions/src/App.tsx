@@ -40,6 +40,7 @@ import {
   getGetAdminDashboardStatsQueryKey,
   getGetAdminMeQueryKey,
   getGetAdminRecentApplicationsQueryKey,
+  setBaseUrl,
   setAuthTokenGetter,
   useAdminLogin,
   useGetAdminApplication,
@@ -60,6 +61,7 @@ import NotFound from '@/pages/not-found';
 import './index.css';
 
 const queryClient = new QueryClient();
+setBaseUrl('http://localhost:8081');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
 
 function formatDate(date: string | null | undefined, withTime = false) {
@@ -75,7 +77,7 @@ function formatDate(date: string | null | undefined, withTime = false) {
 }
 
 function initials(name = '') {
-  return name.split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'NA';
+  return (name || '').split(' ').filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase() || 'NA';
 }
 
 function statusLabel(status?: string) {
@@ -246,6 +248,12 @@ function DashboardPage() {
   const stats = useGetAdminDashboardStats();
   const recent = useGetAdminRecentApplications({ limit: 6 });
   const [, setLocation] = useLocation();
+
+  console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
+  console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
+  if (stats.error) console.error('[DASH] stats error:', stats.error);
+  if (recent.error) console.error('[DASH] recent error:', recent.error);
+
   if (stats.isLoading) return <PageLoader label="Gathering admissions overview" />;
   if (stats.isError) return <ErrorState retry={() => stats.refetch()} />;
   const data = stats.data;
@@ -277,6 +285,10 @@ function ApplicationsPage() {
   const params = useMemo<GetAdminApplicationsParams>(() => ({ search: search || undefined, status, page, size }), [search, status, page, size]);
   const results = useGetAdminApplications(params);
   const content = results.data?.content || [];
+
+  console.log('[APPS] loading:', results.isLoading, 'error:', results.error, 'data:', results.data, 'content length:', content.length);
+  if (results.error) console.error('[APPS] fetch error:', results.error);
+  if (results.data) console.log('[APPS] totalElements:', results.data.totalElements, 'totalPages:', results.data.totalPages);
   const hasFilters = Boolean(search || status !== 'ALL');
   const clearFilters = () => { setSearch(''); setStatus('ALL'); setPage(0); };
   return <div className="space-y-7">

@@ -1,7 +1,6 @@
 package org.nexus.admissions.dto;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 public record ApplicationResponse(
         Long id,
@@ -12,7 +11,7 @@ public record ApplicationResponse(
         String email,
         String phoneNumber,
         String gender,
-        LocalDateTime dateOfBirth,
+        String dateOfBirth,
         String nationality,
         String district,
         String subcounty,
@@ -26,8 +25,8 @@ public record ApplicationResponse(
         Boolean emailVerified,
         String status,
         String reviewStatus,
-        LocalDateTime submittedAt,
-        LocalDateTime reviewedAt,
+        String submittedAt,
+        String reviewedAt,
         String reviewerNotes,
         String uceResult,
         String uaceResult,
@@ -36,6 +35,6 @@ public record ApplicationResponse(
         BigDecimal feePaid,
         BigDecimal feeRequired,
         String feeCurrency,
-        LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        String createdAt,
+        String updatedAt
 ) {}
