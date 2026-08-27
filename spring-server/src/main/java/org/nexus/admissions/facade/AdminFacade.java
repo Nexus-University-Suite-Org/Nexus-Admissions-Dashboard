@@ -55,8 +55,13 @@ public class AdminFacade {
 
     @Transactional
     public AdminLoginResponse me(Long adminId) {
+        System.out.println("[ADMIN-FACADE] me() looking up adminId=" + adminId);
         Admin admin = adminService.findById(adminId)
-                .orElseThrow(() -> new RuntimeException("Admin not found"));
+                .orElseThrow(() -> {
+                    System.out.println("[ADMIN-FACADE] Admin NOT FOUND for id=" + adminId);
+                    return new RuntimeException("Admin not found");
+                });
+        System.out.println("[ADMIN-FACADE] Admin found: email=" + admin.getEmail() + ", fullName=" + admin.getFullName());
         return new AdminLoginResponse(null, admin.getEmail(), admin.getFullName());
     }
 
@@ -162,12 +167,39 @@ public class AdminFacade {
         return new ApplicationResponse(
                 a.id(), a.prn(), a.firstName(), a.lastName(), a.otherNames(),
                 a.email(), a.phoneNumber(), a.gender(), a.dateOfBirth(),
-                a.nationality(), a.district(), a.subcounty(), a.village(),
+                a.maritalStatus(),
+                a.nationality(),
+                a.address(), a.postalAddress(), a.city(), a.postalCode(), a.country(),
+                a.district(), a.subcounty(), a.village(),
+                a.hasNationalIdOrPassport(), a.birthCertificateOrNationalIdDetails(),
+                a.passportPhotoUploaded(), a.passportPhotoUrl(),
+                a.guardianName(), a.guardianType(), a.guardianPhone(), a.nextOfKinRelationship(),
+                a.isUgandan(), a.applicationType(), a.entryScheme(),
                 a.programChoice1(), a.programChoice2(), a.programChoice3(),
+                a.programChoice4(), a.assignedProgramme(), a.totalWeightScore(), a.qualificationResults(),
+                a.startDate(), a.previousInstitution(),
+                a.highestQualification(), a.academicCredentialLevel(), a.academicCredentialsDetails(),
+                a.birthCertificateUrl(),
                 a.studyMode(), a.academicYear(), a.semester(),
                 a.emailVerified(), a.status(), a.reviewStatus(),
                 a.submittedAt(), a.reviewedAt(), a.reviewerNotes(),
                 a.uceResult(), a.uaceResult(), a.documents(), a.extras(),
+                a.uceIndexNumber(), a.uceYearOfSitting(), a.uceSecondSitting(),
+                a.uceSecondIndexNumber(), a.uceSecondYearOfSitting(),
+                a.uceTotalAggregates(), a.uceDivision(), a.oLevelSchoolName(),
+                a.uaceIndexNumber(), a.uaceYearOfSitting(), a.uaceSecondSitting(),
+                a.uaceSecondIndexNumber(), a.uaceSecondYearOfSitting(),
+                a.uaceTotalPoints(), a.uacePrincipalSubjects(),
+                a.uaceGeneralPaperGrade(), a.uaceIctOrSubMathSubject(), a.uaceIctOrSubMathGrade(),
+                a.oLevelResultSlipUrl(), a.aLevelResultSlipUrl(), a.academicTranscriptUrl(),
+                a.nationalIdOrPassportUrl(), a.countryIdDocumentUrl(),
+                a.refereeLetterUrl(), a.personalStatementAttachmentUrl(),
+                a.oLevelSubjects(), a.certificateSubjects(),
+                a.gpa(), a.personalStatement(), a.howDidYouHear(),
+                a.documentsConfirmed(), a.transcriptUploaded(), a.idUploaded(),
+                a.countryIdUploaded(), a.recommendationUploaded(), a.statementUploaded(),
+                a.applicationFeePaid(), a.paymentMethod(), a.paymentReference(),
+                a.interviewPreference(), a.termsAccepted(),
                 a.feePaid(), a.feeRequired(), a.feeCurrency(),
                 a.createdAt(), a.updatedAt()
         );

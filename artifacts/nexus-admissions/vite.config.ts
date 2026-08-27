@@ -72,6 +72,9 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    proxy: {
+      '/api/v1/storage': 'http://localhost:8080',
+    },
   },
   preview: {
     port,

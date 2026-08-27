@@ -26,18 +26,26 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         String header = request.getHeader("Authorization");
+        System.out.println("[AUTH-FILTER] " + request.getMethod() + " " + request.getRequestURI() + " | Authorization header: " + (header != null ? "present (Bearer " + header.substring(7, Math.min(header.length(), 27)) + "...)" : "null"));
 
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            if (jwtUtil.isValid(token)) {
+            boolean valid = jwtUtil.isValid(token);
+            System.out.println("[AUTH-FILTER] Token valid: " + valid);
+            if (valid) {
                 Long adminId = jwtUtil.getAdminId(token);
                 String email = jwtUtil.getEmail(token);
+                System.out.println("[AUTH-FILTER] Authenticated admin: id=" + adminId + ", email=" + email);
 
                 AdminPrincipal principal = new AdminPrincipal(adminId, email);
                 var authorities = List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
                 var auth = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(auth);
+            } else {
+                System.out.println("[AUTH-FILTER] Token invalid or expired");
             }
+        } else {
+            System.out.println("[AUTH-FILTER] No Bearer token");
         }
 
         filterChain.doFilter(request, response);
