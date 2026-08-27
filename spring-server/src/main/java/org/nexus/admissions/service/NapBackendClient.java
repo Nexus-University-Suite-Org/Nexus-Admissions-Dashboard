@@ -29,6 +29,8 @@ public class NapBackendClient {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record NapApplication(
             Long id, String prn,
+            String registrationNumber,
+            String studentNumber,
             String firstName, String lastName, String otherNames,
             String email, String phoneNumber,
             String gender, String dateOfBirth,

@@ -165,7 +165,8 @@ public class AdminFacade {
 
     private ApplicationResponse toDto(NapBackendClient.NapApplication a) {
         return new ApplicationResponse(
-                a.id(), a.prn(), a.firstName(), a.lastName(), a.otherNames(),
+                a.id(), a.prn(), a.registrationNumber(), a.studentNumber(),
+                a.firstName(), a.lastName(), a.otherNames(),
                 a.email(), a.phoneNumber(), a.gender(), a.dateOfBirth(),
                 a.maritalStatus(),
                 a.nationality(),
