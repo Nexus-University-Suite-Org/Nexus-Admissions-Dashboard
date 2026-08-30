@@ -533,6 +533,7 @@ function SiteSettingsPage() {
   const [whatWeTeachPrograms, setWhatWeTeachPrograms] = useState<Array<{ title: string; duration: string; outcome: string }>>([]);
   const [whatWeTeachBtnText, setWhatWeTeachBtnText] = useState('');
   const [whatWeTeachBtnVisible, setWhatWeTeachBtnVisible] = useState(true);
+  const [successStoryTagline, setSuccessStoryTagline] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -560,6 +561,7 @@ function SiteSettingsPage() {
       try { setWhatWeTeachPrograms(JSON.parse(getSetting('what_we_teach_programs'))); } catch { setWhatWeTeachPrograms([]); }
       setWhatWeTeachBtnText(getSetting('what_we_teach_btn_text'));
       setWhatWeTeachBtnVisible(getSetting('what_we_teach_btn_visible') !== 'false');
+      setSuccessStoryTagline(getSetting('success_story_tagline'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -856,6 +858,18 @@ function SiteSettingsPage() {
             {whatWeTeachBtnVisible ? 'Visible' : 'Hidden'}
           </button>
           <Button onClick={() => save('what_we_teach_btn_text', whatWeTeachBtnText)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Success Story Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Success Story Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The tagline above the student success story quote on the homepage.</p>
+        <div className="flex gap-3">
+          <Input value={successStoryTagline} onChange={(e) => setSuccessStoryTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Success Story" />
+          <Button onClick={() => save('success_story_tagline', successStoryTagline)} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
           </Button>
         </div>
