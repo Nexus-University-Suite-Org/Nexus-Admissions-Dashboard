@@ -554,24 +554,25 @@ function SiteSettingsPage() {
 
       {/* Portal Name */}
       <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-4">Portal Name</h2>
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
         <div className="flex gap-3">
-          <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" />
+          <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
           <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
           </Button>
         </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">Displayed as the logo text in the header.</p>
       </div>
 
       {/* Navigation Links */}
       <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
           <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
             + Add Link
           </Button>
         </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
         <div className="space-y-3">
           {navLinks.map((link, i) => (
             <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
@@ -591,12 +592,13 @@ function SiteSettingsPage() {
 
       {/* CTA Buttons */}
       <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-1">
           <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
           <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
             + Add Button
           </Button>
         </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
         <div className="space-y-3">
           {ctaButtons.map((btn, i) => (
             <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
@@ -620,33 +622,34 @@ function SiteSettingsPage() {
 
       {/* Hero Tagline */}
       <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-4">Hero Tagline</h2>
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
         <div className="flex gap-3">
-          <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" />
+          <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Communities Since 2010" />
           <Button onClick={() => save('hero_tagline', heroTagline)} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
           </Button>
         </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">Displayed next to the heart icon in the hero section.</p>
       </div>
 
       {/* Hero Headings */}
       <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-4">Hero Headings</h2>
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Headings</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The large main heading on the homepage hero section. Line 2 is shown in accent color.</p>
         <div className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 1</label>
             <div className="flex gap-3">
-              <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" />
+              <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Single Mothers" />
               <Button onClick={() => save('hero_heading_1', heroHeading1)} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
               </Button>
             </div>
           </div>
           <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 2 (accent color)</label>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 2 <span className="text-accent font-normal">(accent color)</span></label>
             <div className="flex gap-3">
-              <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" />
+              <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. & Vulnerable Youth" />
               <Button onClick={() => save('hero_heading_2', heroHeading2)} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
               </Button>
@@ -655,7 +658,7 @@ function SiteSettingsPage() {
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 3</label>
             <div className="flex gap-3">
-              <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" />
+              <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" placeholder="e.g. Through Practical Skills" />
               <Button onClick={() => save('hero_heading_3', heroHeading3)} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
               </Button>
