@@ -529,6 +529,7 @@ function SiteSettingsPage() {
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
   const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
   const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
+  const [whatWeTeachSubtitle, setWhatWeTeachSubtitle] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -552,6 +553,7 @@ function SiteSettingsPage() {
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
       setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
       setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
+      setWhatWeTeachSubtitle(getSetting('what_we_teach_subtitle'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -796,6 +798,15 @@ function SiteSettingsPage() {
             <div className="flex gap-3">
               <Input value={whatWeTeachHeading2} onChange={(e) => setWhatWeTeachHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Create Real Livelihoods" />
               <Button onClick={() => save('what_we_teach_heading_2', whatWeTeachHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
+            <textarea value={whatWeTeachSubtitle} onChange={(e) => setWhatWeTeachSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Our vocational programs are designed for immediate employment..." />
+            <div className="mt-2">
+              <Button onClick={() => save('what_we_teach_subtitle', whatWeTeachSubtitle)} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
               </Button>
             </div>
