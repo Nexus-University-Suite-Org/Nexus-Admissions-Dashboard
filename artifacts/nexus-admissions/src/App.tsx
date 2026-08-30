@@ -526,6 +526,7 @@ function SiteSettingsPage() {
   const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
   const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
   const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
+  const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -546,6 +547,7 @@ function SiteSettingsPage() {
       setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
       setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
       try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
+      setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -760,6 +762,18 @@ function SiteSettingsPage() {
         <Button className="mt-4" onClick={() => save('hero_stats', JSON.stringify(heroStats))} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
         </Button>
+      </div>
+
+      {/* Programs Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section Tagline</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small uppercase text above the programs heading on the homepage.</p>
+        <div className="flex gap-3">
+          <Input value={whatWeTeachTagline} onChange={(e) => setWhatWeTeachTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
+          <Button onClick={() => save('what_we_teach_tagline', whatWeTeachTagline)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
       </div>
     </div>
   );
