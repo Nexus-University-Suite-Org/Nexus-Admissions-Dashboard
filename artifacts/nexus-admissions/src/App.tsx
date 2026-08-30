@@ -525,6 +525,7 @@ function SiteSettingsPage() {
   const [heroCtaSponsorVisible, setHeroCtaSponsorVisible] = useState(true);
   const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
   const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
+  const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -544,6 +545,7 @@ function SiteSettingsPage() {
       setHeroCtaSponsorVisible(getSetting('hero_cta_sponsor_visible') !== 'false');
       setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
       setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
+      try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -735,6 +737,29 @@ function SiteSettingsPage() {
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* Hero Stats */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Hero Stats</h2>
+          <Button variant="outline" size="sm" onClick={() => setHeroStats([...heroStats, { value: '', label: '' }])}>
+            + Add Stat
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered statistics displayed at the bottom of the hero section.</p>
+        <div className="space-y-3">
+          {heroStats.map((stat, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={stat.value} onChange={(e) => { const next = [...heroStats]; next[i] = { ...next[i], value: e.target.value }; setHeroStats(next); }} placeholder="e.g. 1,200+" />
+              <Input value={stat.label} onChange={(e) => { const next = [...heroStats]; next[i] = { ...next[i], label: e.target.value }; setHeroStats(next); }} placeholder="e.g. Students Trained" />
+              <button onClick={() => setHeroStats(heroStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('hero_stats', JSON.stringify(heroStats))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+        </Button>
       </div>
     </div>
   );
