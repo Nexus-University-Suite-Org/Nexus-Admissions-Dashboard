@@ -527,6 +527,8 @@ function SiteSettingsPage() {
   const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
   const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
+  const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
+  const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -548,6 +550,8 @@ function SiteSettingsPage() {
       setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
       try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
+      setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
+      setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -766,13 +770,36 @@ function SiteSettingsPage() {
 
       {/* Programs Section */}
       <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section Tagline</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small uppercase text above the programs heading on the homepage.</p>
-        <div className="flex gap-3">
-          <Input value={whatWeTeachTagline} onChange={(e) => setWhatWeTeachTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
-          <Button onClick={() => save('what_we_teach_tagline', whatWeTeachTagline)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the program cards on the homepage.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachTagline} onChange={(e) => setWhatWeTeachTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
+              <Button onClick={() => save('what_we_teach_tagline', whatWeTeachTagline)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachHeading1} onChange={(e) => setWhatWeTeachHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Practical Skills That" />
+              <Button onClick={() => save('what_we_teach_heading_1', whatWeTeachHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachHeading2} onChange={(e) => setWhatWeTeachHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Create Real Livelihoods" />
+              <Button onClick={() => save('what_we_teach_heading_2', whatWeTeachHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
