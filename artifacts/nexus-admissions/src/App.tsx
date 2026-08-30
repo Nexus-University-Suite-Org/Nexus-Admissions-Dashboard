@@ -531,6 +531,8 @@ function SiteSettingsPage() {
   const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
   const [whatWeTeachSubtitle, setWhatWeTeachSubtitle] = useState('');
   const [whatWeTeachPrograms, setWhatWeTeachPrograms] = useState<Array<{ title: string; duration: string; outcome: string }>>([]);
+  const [whatWeTeachBtnText, setWhatWeTeachBtnText] = useState('');
+  const [whatWeTeachBtnVisible, setWhatWeTeachBtnVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -556,6 +558,8 @@ function SiteSettingsPage() {
       setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
       setWhatWeTeachSubtitle(getSetting('what_we_teach_subtitle'));
       try { setWhatWeTeachPrograms(JSON.parse(getSetting('what_we_teach_programs'))); } catch { setWhatWeTeachPrograms([]); }
+      setWhatWeTeachBtnText(getSetting('what_we_teach_btn_text'));
+      setWhatWeTeachBtnVisible(getSetting('what_we_teach_btn_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -838,6 +842,23 @@ function SiteSettingsPage() {
         <Button className="mt-4" onClick={() => save('what_we_teach_programs', JSON.stringify(whatWeTeachPrograms))} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Programs'}
         </Button>
+      </div>
+
+      {/* Programs Section Button */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section Button</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "View All Programs" link with arrow below the program cards.</p>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 max-w-md">
+            <Input value={whatWeTeachBtnText} onChange={(e) => setWhatWeTeachBtnText(e.target.value)} placeholder="e.g. View All Programs" />
+          </div>
+          <button onClick={() => { setWhatWeTeachBtnVisible(!whatWeTeachBtnVisible); save('what_we_teach_btn_visible', String(!whatWeTeachBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${whatWeTeachBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            {whatWeTeachBtnVisible ? 'Visible' : 'Hidden'}
+          </button>
+          <Button onClick={() => save('what_we_teach_btn_text', whatWeTeachBtnText)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
       </div>
     </div>
   );
