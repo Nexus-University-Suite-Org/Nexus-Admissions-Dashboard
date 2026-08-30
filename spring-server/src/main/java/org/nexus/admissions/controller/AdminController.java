@@ -2,6 +2,7 @@ package org.nexus.admissions.controller;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.Map;
 import org.nexus.admissions.configuration.JwtAuthFilter;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
@@ -76,5 +77,15 @@ public class AdminController {
             @PathVariable Long id,
             @Valid @RequestBody ReviewRequest request) {
         return ResponseEntity.ok(adminFacade.reviewApplication(id, request));
+    }
+
+    @GetMapping("/site-settings")
+    public ResponseEntity<List<Map<String, Object>>> getSiteSettings() {
+        return ResponseEntity.ok(adminFacade.getSiteSettings());
+    }
+
+    @PutMapping("/site-settings")
+    public ResponseEntity<Map<String, Object>> updateSiteSetting(@RequestBody Map<String, String> body) {
+        return ResponseEntity.ok(adminFacade.updateSiteSetting(body.get("settingKey"), body.get("settingValue")));
     }
 }

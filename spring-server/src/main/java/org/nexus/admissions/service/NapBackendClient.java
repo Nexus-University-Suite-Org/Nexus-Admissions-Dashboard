@@ -190,4 +190,64 @@ public class NapBackendClient {
             throw new RuntimeException("Failed to review application on NAP-Backend: " + e.getMessage(), e);
         }
     }
+
+    public List<Map<String, Object>> fetchSiteSettingsAdmin() {
+        try {
+            String token = loginToNap();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/site-settings"))
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+            return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch site settings: " + e.getMessage(), e);
+        }
+    }
+
+    public Map<String, Object> updateSiteSetting(String settingKey, String settingValue) {
+        try {
+            String token = loginToNap();
+            String json = objectMapper.writeValueAsString(Map.of("settingKey", settingKey, "settingValue", settingValue));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/site-settings"))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .PUT(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+            return objectMapper.readValue(response.body(), Map.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to update site setting: " + e.getMessage(), e);
+        }
+    }
+
+    private String loginToNap() {
+        try {
+            String json = objectMapper.writeValueAsString(Map.of("email", "admin@nexus.edu", "password", "admin123"));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/auth/login"))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend login returned " + response.statusCode());
+            }
+            Map<String, Object> body = objectMapper.readValue(response.body(), Map.class);
+            return (String) body.get("token");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to login to NAP-Backend: " + e.getMessage(), e);
+        }
+    }
 }
