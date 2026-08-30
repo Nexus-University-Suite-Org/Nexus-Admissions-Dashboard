@@ -530,6 +530,7 @@ function SiteSettingsPage() {
   const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
   const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
   const [whatWeTeachSubtitle, setWhatWeTeachSubtitle] = useState('');
+  const [whatWeTeachPrograms, setWhatWeTeachPrograms] = useState<Array<{ title: string; duration: string; outcome: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -554,6 +555,7 @@ function SiteSettingsPage() {
       setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
       setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
       setWhatWeTeachSubtitle(getSetting('what_we_teach_subtitle'));
+      try { setWhatWeTeachPrograms(JSON.parse(getSetting('what_we_teach_programs'))); } catch { setWhatWeTeachPrograms([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -812,6 +814,30 @@ function SiteSettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Programs List */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Program Cards</h2>
+          <Button variant="outline" size="sm" onClick={() => setWhatWeTeachPrograms([...whatWeTeachPrograms, { title: '', duration: '', outcome: '' }])}>
+            + Add Program
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The vocational program cards displayed in the "What We Teach" section on the homepage.</p>
+        <div className="space-y-3">
+          {whatWeTeachPrograms.map((prog, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_2fr_auto] gap-3 items-center">
+              <Input value={prog.title} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], title: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. Tailoring & Design" />
+              <Input value={prog.duration} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], duration: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. 6 months" />
+              <Input value={prog.outcome} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], outcome: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. Run your own shop" />
+              <button onClick={() => setWhatWeTeachPrograms(whatWeTeachPrograms.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('what_we_teach_programs', JSON.stringify(whatWeTeachPrograms))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Programs'}
+        </Button>
       </div>
     </div>
   );
