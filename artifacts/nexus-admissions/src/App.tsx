@@ -523,6 +523,8 @@ function SiteSettingsPage() {
   const [heroCtaSponsor, setHeroCtaSponsor] = useState('');
   const [heroCtaDonateVisible, setHeroCtaDonateVisible] = useState(true);
   const [heroCtaSponsorVisible, setHeroCtaSponsorVisible] = useState(true);
+  const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
+  const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -540,6 +542,8 @@ function SiteSettingsPage() {
       setHeroCtaSponsor(getSetting('hero_cta_sponsor'));
       setHeroCtaDonateVisible(getSetting('hero_cta_donate_visible') !== 'false');
       setHeroCtaSponsorVisible(getSetting('hero_cta_sponsor_visible') !== 'false');
+      setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
+      setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -715,6 +719,18 @@ function SiteSettingsPage() {
               {heroCtaSponsorVisible ? 'Visible' : 'Hidden'}
             </button>
             <Button className="mt-5" onClick={() => save('hero_cta_sponsor', heroCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text Button (with arrow icon)</label>
+              <Input value={heroCtaLearnMore} onChange={(e) => setHeroCtaLearnMore(e.target.value)} placeholder="e.g. Learn More" />
+            </div>
+            <button onClick={() => { setHeroCtaLearnMoreVisible(!heroCtaLearnMoreVisible); save('hero_cta_learn_more_visible', String(!heroCtaLearnMoreVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaLearnMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaLearnMoreVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_learn_more', heroCtaLearnMore)} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
             </Button>
           </div>
