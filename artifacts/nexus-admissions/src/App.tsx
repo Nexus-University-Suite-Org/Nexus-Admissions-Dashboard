@@ -518,6 +518,7 @@ function SiteSettingsPage() {
   const [heroHeading1, setHeroHeading1] = useState('');
   const [heroHeading2, setHeroHeading2] = useState('');
   const [heroHeading3, setHeroHeading3] = useState('');
+  const [heroSubtitle, setHeroSubtitle] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -530,6 +531,7 @@ function SiteSettingsPage() {
       setHeroHeading1(getSetting('hero_heading_1'));
       setHeroHeading2(getSetting('hero_heading_2'));
       setHeroHeading3(getSetting('hero_heading_3'));
+      setHeroSubtitle(getSetting('hero_subtitle'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -664,6 +666,18 @@ function SiteSettingsPage() {
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Hero Subtitle */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Subtitle</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The paragraph text below the main heading on the homepage hero section.</p>
+        <textarea value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. We equip vulnerable youth and single mothers with vocational skills..." />
+        <div className="mt-3">
+          <Button onClick={() => save('hero_subtitle', heroSubtitle)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
         </div>
       </div>
     </div>
