@@ -521,6 +521,8 @@ function SiteSettingsPage() {
   const [heroSubtitle, setHeroSubtitle] = useState('');
   const [heroCtaDonate, setHeroCtaDonate] = useState('');
   const [heroCtaSponsor, setHeroCtaSponsor] = useState('');
+  const [heroCtaDonateVisible, setHeroCtaDonateVisible] = useState(true);
+  const [heroCtaSponsorVisible, setHeroCtaSponsorVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -536,6 +538,8 @@ function SiteSettingsPage() {
       setHeroSubtitle(getSetting('hero_subtitle'));
       setHeroCtaDonate(getSetting('hero_cta_donate'));
       setHeroCtaSponsor(getSetting('hero_cta_sponsor'));
+      setHeroCtaDonateVisible(getSetting('hero_cta_donate_visible') !== 'false');
+      setHeroCtaSponsorVisible(getSetting('hero_cta_sponsor_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -688,25 +692,31 @@ function SiteSettingsPage() {
       {/* Hero CTA Buttons */}
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Buttons</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the hero subtitle.</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the hero subtitle. Toggle visibility to show/hide each button.</p>
         <div className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
-            <div className="flex gap-3">
-              <Input value={heroCtaDonate} onChange={(e) => setHeroCtaDonate(e.target.value)} className="max-w-md" placeholder="e.g. Donate Now" />
-              <Button onClick={() => save('hero_cta_donate', heroCtaDonate)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
+              <Input value={heroCtaDonate} onChange={(e) => setHeroCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
             </div>
+            <button onClick={() => { setHeroCtaDonateVisible(!heroCtaDonateVisible); save('hero_cta_donate_visible', String(!heroCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaDonateVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_donate', heroCtaDonate)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
           </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
-            <div className="flex gap-3">
-              <Input value={heroCtaSponsor} onChange={(e) => setHeroCtaSponsor(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
-              <Button onClick={() => save('hero_cta_sponsor', heroCtaSponsor)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
+              <Input value={heroCtaSponsor} onChange={(e) => setHeroCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
             </div>
+            <button onClick={() => { setHeroCtaSponsorVisible(!heroCtaSponsorVisible); save('hero_cta_sponsor_visible', String(!heroCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaSponsorVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_sponsor', heroCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
           </div>
         </div>
       </div>
