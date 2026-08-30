@@ -515,11 +515,6 @@ function SiteSettingsPage() {
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
   const [heroTagline, setHeroTagline] = useState('');
-  const [heroHeading1, setHeroHeading1] = useState('');
-  const [heroHeading2, setHeroHeading2] = useState('');
-  const [heroHeading3, setHeroHeading3] = useState('');
-  const [heroSubtitle, setHeroSubtitle] = useState('');
-  const [footerMission, setFooterMission] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -529,11 +524,6 @@ function SiteSettingsPage() {
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
       setHeroTagline(getSetting('hero_tagline'));
-      setHeroHeading1(getSetting('hero_heading_1'));
-      setHeroHeading2(getSetting('hero_heading_2'));
-      setHeroHeading3(getSetting('hero_heading_3'));
-      setHeroSubtitle(getSetting('hero_subtitle'));
-      setFooterMission(getSetting('footer_mission'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -622,57 +612,16 @@ function SiteSettingsPage() {
         </Button>
       </div>
 
-      {/* Hero Section */}
+      {/* Hero Tagline */}
       <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-4">Hero Section</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (with heart icon)</label>
-            <div className="flex gap-3">
-              <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" />
-              <Button onClick={() => save('hero_tagline', heroTagline)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
-            <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2 (accent)</label>
-            <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 3</label>
-            <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
-            <textarea value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" />
-          </div>
-          <Button onClick={() => {
-            save('hero_tagline', heroTagline);
-            save('hero_heading_1', heroHeading1);
-            save('hero_heading_2', heroHeading2);
-            save('hero_heading_3', heroHeading3);
-            save('hero_subtitle', heroSubtitle);
-          }} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero'}
+        <h2 className="nexus-serif text-lg font-semibold mb-4">Hero Tagline</h2>
+        <div className="flex gap-3">
+          <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" />
+          <Button onClick={() => save('hero_tagline', heroTagline)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
           </Button>
         </div>
-      </div>
-
-      {/* Footer Mission */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-4">Footer Mission</h2>
-        <textarea value={footerMission} onChange={(e) => setFooterMission(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" />
-        <div className="mt-3">
-          <Button onClick={() => save('footer_mission', footerMission)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Footer'}
-          </Button>
-        </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">Displayed in the footer section of the public portal.</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">Displayed next to the heart icon in the hero section.</p>
       </div>
     </div>
   );
