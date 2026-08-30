@@ -515,6 +515,9 @@ function SiteSettingsPage() {
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
   const [heroTagline, setHeroTagline] = useState('');
+  const [heroHeading1, setHeroHeading1] = useState('');
+  const [heroHeading2, setHeroHeading2] = useState('');
+  const [heroHeading3, setHeroHeading3] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -524,6 +527,9 @@ function SiteSettingsPage() {
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
       setHeroTagline(getSetting('hero_tagline'));
+      setHeroHeading1(getSetting('hero_heading_1'));
+      setHeroHeading2(getSetting('hero_heading_2'));
+      setHeroHeading3(getSetting('hero_heading_3'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -622,6 +628,40 @@ function SiteSettingsPage() {
           </Button>
         </div>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mt-2">Displayed next to the heart icon in the hero section.</p>
+      </div>
+
+      {/* Hero Headings */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-4">Hero Headings</h2>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 1</label>
+            <div className="flex gap-3">
+              <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" />
+              <Button onClick={() => save('hero_heading_1', heroHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 2 (accent color)</label>
+            <div className="flex gap-3">
+              <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" />
+              <Button onClick={() => save('hero_heading_2', heroHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 3</label>
+            <div className="flex gap-3">
+              <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" />
+              <Button onClick={() => save('hero_heading_3', heroHeading3)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
