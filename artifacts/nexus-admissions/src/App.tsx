@@ -538,6 +538,9 @@ function SiteSettingsPage() {
   const [successStoryAuthor, setSuccessStoryAuthor] = useState('');
   const [successStoryProgram, setSuccessStoryProgram] = useState('');
   const [successStoryOutcome, setSuccessStoryOutcome] = useState('');
+  const [successStoryBtnText, setSuccessStoryBtnText] = useState('');
+  const [successStoryBtnVisible, setSuccessStoryBtnVisible] = useState(true);
+  const [successStoryStats, setSuccessStoryStats] = useState<Array<{ val: string; label: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -570,6 +573,9 @@ function SiteSettingsPage() {
       setSuccessStoryAuthor(getSetting('success_story_author'));
       setSuccessStoryProgram(getSetting('success_story_program'));
       setSuccessStoryOutcome(getSetting('success_story_outcome'));
+      setSuccessStoryBtnText(getSetting('success_story_btn_text'));
+      setSuccessStoryBtnVisible(getSetting('success_story_btn_visible') !== 'false');
+      try { setSuccessStoryStats(JSON.parse(getSetting('success_story_stats'))); } catch { setSuccessStoryStats([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -921,7 +927,42 @@ function SiteSettingsPage() {
               </Button>
             </div>
           </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button</label>
+            <div className="flex items-center gap-3">
+              <Input value={successStoryBtnText} onChange={(e) => setSuccessStoryBtnText(e.target.value)} className="max-w-md" placeholder="e.g. Read More Stories" />
+              <button onClick={() => { setSuccessStoryBtnVisible(!successStoryBtnVisible); save('success_story_btn_visible', String(!successStoryBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${successStoryBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                {successStoryBtnVisible ? 'Visible' : 'Hidden'}
+              </button>
+              <Button onClick={() => save('success_story_btn_text', successStoryBtnText)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Success Story Stats */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Success Story Stats</h2>
+          <Button variant="outline" size="sm" onClick={() => setSuccessStoryStats([...successStoryStats, { val: '', label: '' }])}>
+            + Add Stat
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats displayed beside the success story on the homepage.</p>
+        <div className="space-y-3">
+          {successStoryStats.map((stat, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={stat.val} onChange={(e) => { const next = [...successStoryStats]; next[i] = { ...next[i], val: e.target.value }; setSuccessStoryStats(next); }} placeholder="e.g. 1,200+" />
+              <Input value={stat.label} onChange={(e) => { const next = [...successStoryStats]; next[i] = { ...next[i], label: e.target.value }; setSuccessStoryStats(next); }} placeholder="e.g. Lives Changed" />
+              <button onClick={() => setSuccessStoryStats(successStoryStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('success_story_stats', JSON.stringify(successStoryStats))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+        </Button>
       </div>
     </div>
   );
