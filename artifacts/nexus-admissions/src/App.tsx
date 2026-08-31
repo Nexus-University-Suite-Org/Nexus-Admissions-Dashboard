@@ -546,6 +546,10 @@ function SiteSettingsPage() {
   const [donateHeading2, setDonateHeading2] = useState('');
   const [donateSubtitle, setDonateSubtitle] = useState('');
   const [donateTiers, setDonateTiers] = useState<Array<{ amount: string; impact: string }>>([]);
+  const [donateCtaDonate, setDonateCtaDonate] = useState('');
+  const [donateCtaDonateVisible, setDonateCtaDonateVisible] = useState(true);
+  const [donateCtaSponsor, setDonateCtaSponsor] = useState('');
+  const [donateCtaSponsorVisible, setDonateCtaSponsorVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -586,6 +590,10 @@ function SiteSettingsPage() {
       setDonateHeading2(getSetting('donate_heading_2'));
       setDonateSubtitle(getSetting('donate_subtitle'));
       try { setDonateTiers(JSON.parse(getSetting('donate_tiers'))); } catch { setDonateTiers([]); }
+      setDonateCtaDonate(getSetting('donate_cta_donate'));
+      setDonateCtaDonateVisible(getSetting('donate_cta_donate_visible') !== 'false');
+      setDonateCtaSponsor(getSetting('donate_cta_sponsor'));
+      setDonateCtaSponsorVisible(getSetting('donate_cta_sponsor_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1040,6 +1048,38 @@ function SiteSettingsPage() {
         <Button className="mt-4" onClick={() => save('donate_tiers', JSON.stringify(donateTiers))} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
         </Button>
+      </div>
+
+      {/* Donate Section Buttons */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Donate Section Buttons</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the donation tier cards. Toggle visibility to show/hide each button.</p>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
+              <Input value={donateCtaDonate} onChange={(e) => setDonateCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
+            </div>
+            <button onClick={() => { setDonateCtaDonateVisible(!donateCtaDonateVisible); save('donate_cta_donate_visible', String(!donateCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaDonateVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_donate', donateCtaDonate)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
+              <Input value={donateCtaSponsor} onChange={(e) => setDonateCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
+            </div>
+            <button onClick={() => { setDonateCtaSponsorVisible(!donateCtaSponsorVisible); save('donate_cta_sponsor_visible', String(!donateCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaSponsorVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_sponsor', donateCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
