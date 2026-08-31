@@ -545,6 +545,7 @@ function SiteSettingsPage() {
   const [donateHeading1, setDonateHeading1] = useState('');
   const [donateHeading2, setDonateHeading2] = useState('');
   const [donateSubtitle, setDonateSubtitle] = useState('');
+  const [donateTiers, setDonateTiers] = useState<Array<{ amount: string; impact: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -584,6 +585,7 @@ function SiteSettingsPage() {
       setDonateHeading1(getSetting('donate_heading_1'));
       setDonateHeading2(getSetting('donate_heading_2'));
       setDonateSubtitle(getSetting('donate_subtitle'));
+      try { setDonateTiers(JSON.parse(getSetting('donate_tiers'))); } catch { setDonateTiers([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1015,6 +1017,29 @@ function SiteSettingsPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Donate Tiers */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Donation Tiers</h2>
+          <Button variant="outline" size="sm" onClick={() => setDonateTiers([...donateTiers, { amount: '', impact: '' }])}>
+            + Add Tier
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation amount cards displayed in the "Make A Difference" section.</p>
+        <div className="space-y-3">
+          {donateTiers.map((tier, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={tier.amount} onChange={(e) => { const next = [...donateTiers]; next[i] = { ...next[i], amount: e.target.value }; setDonateTiers(next); }} placeholder="e.g. $50" />
+              <Input value={tier.impact} onChange={(e) => { const next = [...donateTiers]; next[i] = { ...next[i], impact: e.target.value }; setDonateTiers(next); }} placeholder="e.g. Sponsors a student for one month" />
+              <button onClick={() => setDonateTiers(donateTiers.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('donate_tiers', JSON.stringify(donateTiers))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
+        </Button>
       </div>
     </div>
   );
