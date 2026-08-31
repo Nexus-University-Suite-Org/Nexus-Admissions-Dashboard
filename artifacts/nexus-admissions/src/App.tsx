@@ -550,6 +550,7 @@ function SiteSettingsPage() {
   const [donateCtaDonateVisible, setDonateCtaDonateVisible] = useState(true);
   const [donateCtaSponsor, setDonateCtaSponsor] = useState('');
   const [donateCtaSponsorVisible, setDonateCtaSponsorVisible] = useState(true);
+  const [footerMission, setFooterMission] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -594,6 +595,7 @@ function SiteSettingsPage() {
       setDonateCtaDonateVisible(getSetting('donate_cta_donate_visible') !== 'false');
       setDonateCtaSponsor(getSetting('donate_cta_sponsor'));
       setDonateCtaSponsorVisible(getSetting('donate_cta_sponsor_visible') !== 'false');
+      setFooterMission(getSetting('footer_mission'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1078,6 +1080,23 @@ function SiteSettingsPage() {
             <Button className="mt-5" onClick={() => save('donate_cta_sponsor', donateCtaSponsor)} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
             </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Footer</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The mission text displayed in the site footer.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Mission Statement</label>
+            <textarea value={footerMission} onChange={(e) => setFooterMission(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Empowering single mothers and vulnerable youth..." />
+            <div className="mt-2">
+              <Button onClick={() => save('footer_mission', footerMission)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
