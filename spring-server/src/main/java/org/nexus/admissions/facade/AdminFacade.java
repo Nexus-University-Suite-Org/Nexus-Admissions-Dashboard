@@ -205,4 +205,14 @@ public class AdminFacade {
                 a.createdAt(), a.updatedAt()
         );
     }
+
+    @Transactional
+    public List<Map<String, Object>> getSiteSettings() {
+        return napClient.fetchSiteSettingsAdmin();
+    }
+
+    @Transactional
+    public Map<String, Object> updateSiteSetting(String settingKey, String settingValue) {
+        return napClient.updateSiteSetting(settingKey, settingValue);
+    }
 }

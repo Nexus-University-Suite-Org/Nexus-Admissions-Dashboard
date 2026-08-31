@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
-import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import {
   ArrowLeft,
@@ -26,8 +26,10 @@ import {
   Menu,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   UserRound,
   UsersRound,
   X,
@@ -36,6 +38,7 @@ import {
 import {
   ApplicationReviewInputReviewStatus,
   ApplicationStatus,
+  customFetch,
   getGetAdminApplicationQueryKey,
   getGetAdminApplicationsQueryKey,
   getGetAdminDashboardStatsQueryKey,
@@ -62,8 +65,28 @@ import NotFound from '@/pages/not-found';
 import './index.css';
 
 const queryClient = new QueryClient();
-setBaseUrl('http://localhost:8081');
+setBaseUrl('http://localhost:8083');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+function useGetSiteSettings() {
+  return useQuery({
+    queryKey: ['admin', 'site-settings'],
+    queryFn: () => customFetch<Array<{ id: number; tenantId: number; settingKey: string; settingValue: string }>>('/api/v1/admin/site-settings'),
+  });
+}
+
+function useUpdateSiteSetting() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { settingKey: string; settingValue: string }) =>
+      customFetch<{ id: number; settingKey: string; settingValue: string }>('/api/v1/admin/site-settings', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'site-settings'] }),
+  });
+}
 
 function formatDate(date: string | null | undefined, withTime = false) {
   if (!date) return '—';
@@ -154,6 +177,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
   const nav = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/admin/applications', label: 'Applications', icon: ClipboardList },
+    { href: '/admin/settings', label: 'Site Settings', icon: Settings },
   ];
   const logout = () => {
     localStorage.removeItem('nap_admin_token');
@@ -371,6 +395,73 @@ function ReviewPanel({ app }: { app: Application }) {
   return <div className="nexus-card overflow-hidden border-[hsl(var(--accent)/.6)]"><div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--accent)/.12)] px-5 py-4"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(31_59%_28%)]" /><p className="text-sm font-bold">Record a decision</p></div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Choose one outcome and leave a clear audit note.</p></div><div className="space-y-5 p-5"><div className="grid grid-cols-3 gap-2">{(['admitted', 'waitlisted', 'rejected'] as const).map((option) => <button data-testid={`button-review-${option}`} key={option} onClick={() => setChoice(option)} className={`rounded-xl border px-2 py-3 text-xs font-semibold capitalize transition-all ${choice === option ? option === 'rejected' ? 'border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/.08)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)]'}`}>{option}</button>)}</div><label className="block"><span className="mb-2 block text-xs font-semibold">Reviewer note <span className="font-normal text-[hsl(var(--muted-foreground))]">(recommended)</span></span><textarea data-testid="textarea-review-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Add context for the decision…" className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none transition-shadow focus:ring-1 focus:ring-[hsl(var(--ring))]" /></label>{notice && <div data-testid="status-review-success" className="flex items-center gap-2 rounded-lg bg-[hsl(160_35%_85%)] px-3 py-2 text-xs text-[hsl(160_43%_25%)]"><CheckCircle2 size={14} /> {notice}</div>}{errorMsg && <div data-testid="status-review-error" className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">Error: {errorMsg}</div>}{review.isError && !errorMsg && <div className="text-xs text-[hsl(var(--destructive))]">We couldn't save this decision. Please try again.</div>}<Button data-testid="button-submit-review" onClick={submitReview} disabled={review.isPending} className="h-11 w-full rounded-xl font-bold">{review.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving decision</> : <><Check size={15} /> Confirm decision</>}</Button></div></div>;
 }
 
+interface QualificationEntry {
+  programmeCode: string;
+  programmeName: string;
+  qualified: boolean;
+  totalScore: number;
+  adjustedScore?: number;
+  genderBonus?: boolean;
+  cutoffScore: number;
+  oLevelScore: number;
+  aLevelScore: number;
+  reason: string;
+}
+
+function SuggestedProgrammeCard({ app }: { app: Application }) {
+  const suggestion = useMemo(() => {
+    if (!app.qualificationResults) return null;
+    try {
+      const results = JSON.parse(app.qualificationResults) as QualificationEntry[];
+      const qualified = results.filter((r) => r.qualified);
+      if (!qualified.length) return null;
+      return qualified.sort((a, b) => (b.adjustedScore ?? b.totalScore) - (a.adjustedScore ?? a.totalScore))[0];
+    } catch {
+      return null;
+    }
+  }, [app.qualificationResults]);
+
+  if (!suggestion) return null;
+
+  const score = suggestion.adjustedScore ?? suggestion.totalScore;
+  const hasBonus = suggestion.genderBonus === true;
+
+  return (
+    <div className="nexus-card overflow-hidden border-[hsl(280_65%_55%)/.3]">
+      <div className="border-b border-[hsl(var(--border))] bg-[hsl(280_65%_55%)/.08] px-5 py-4">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="text-[hsl(280_65%_55%)]" />
+          <p className="text-sm font-bold">Suggested Programme</p>
+        </div>
+        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">AI-recommended based on marks &amp; gender bonus</p>
+      </div>
+      <div className="space-y-3 p-5">
+        <div>
+          <p className="text-sm font-bold text-[hsl(var(--foreground))]">{suggestion.programmeName || suggestion.programmeCode}</p>
+          <p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">{suggestion.programmeCode}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 rounded-lg bg-[hsl(var(--muted)/.5)] px-3 py-2 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Score</p>
+            <p className="mt-0.5 text-lg font-bold text-[hsl(var(--foreground))]">{score.toFixed(1)}</p>
+          </div>
+          <div className="flex-1 rounded-lg bg-[hsl(var(--muted)/.5)] px-3 py-2 text-center">
+            <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Cutoff</p>
+            <p className="mt-0.5 text-lg font-bold text-[hsl(var(--foreground))]">{suggestion.cutoffScore.toFixed(1)}</p>
+          </div>
+        </div>
+        {hasBonus && (
+          <div className="flex items-center gap-1.5 rounded-full bg-[hsl(280_65%_55%)/.1] px-3 py-1.5">
+            <Sparkles size={12} className="text-[hsl(280_65%_55%)]" />
+            <span className="text-[11px] font-semibold text-[hsl(280_65%_55%)]">+1.5 female applicant bonus applied</span>
+          </div>
+        )}
+        <p className="text-[11px] leading-5 text-[hsl(var(--muted-foreground))]">{suggestion.reason}</p>
+      </div>
+    </div>
+  );
+}
+
 function ApplicationDetailPage() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -401,7 +492,7 @@ function ApplicationDetailPage() {
 
       <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><BookOpen size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">O-Level & certificate subjects</h2></div><div className="grid gap-x-8 gap-y-6"><DetailField label="GPA" value={app.gpa} /></div><SubjectTable label="O-Level subjects" json={app.oLevelSubjects} /><SubjectTable label="Certificate subjects" json={app.certificateSubjects} /></section>
 
-      {app.qualificationResults && (() => { try { const results = JSON.parse(app.qualificationResults) as Array<{ programmeCode: string; programmeName: string; qualified: boolean; totalScore: number; cutoffScore: number; oLevelScore: number; aLevelScore: number; reason: string }>; if (!results.length) return null; return <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><GraduationCap size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">Qualification breakdown</h2></div><div className="overflow-x-auto"><table className="w-full border-collapse text-left text-xs"><thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.4)] text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]"><th className="px-4 py-3 font-bold">Programme</th><th className="px-4 py-3 font-bold">Score</th><th className="px-4 py-3 font-bold">Cutoff</th><th className="px-4 py-3 font-bold">O-Level</th><th className="px-4 py-3 font-bold">A-Level</th><th className="px-4 py-3 font-bold">Result</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{results.map((r) => <tr key={r.programmeCode} className="hover:bg-[hsl(var(--muted)/.3)]"><td className="px-4 py-3">{r.programmeName || r.programmeCode}</td><td className="px-4 py-3 font-semibold">{r.totalScore.toFixed(1)}</td><td className="px-4 py-3">{r.cutoffScore.toFixed(1)}</td><td className="px-4 py-3">{r.oLevelScore.toFixed(1)}</td><td className="px-4 py-3">{r.aLevelScore.toFixed(1)}</td><td className="px-4 py-3">{r.qualified ? <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(160_43%_40%)]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[hsl(160_43%_40%)]">Qualified</span> : <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--destructive))]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--destructive))]">Below cutoff</span>}</td></tr>)}</tbody></table></div></section>; } catch { return null; } })()}
+      {app.qualificationResults && (() => { try { const results = JSON.parse(app.qualificationResults) as QualificationEntry[]; if (!results.length) return null; return <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><GraduationCap size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">Qualification breakdown</h2></div><div className="overflow-x-auto"><table className="w-full border-collapse text-left text-xs"><thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.4)] text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]"><th className="px-4 py-3 font-bold">Programme</th><th className="px-4 py-3 font-bold">Base Score</th><th className="px-4 py-3 font-bold">Adjusted</th><th className="px-4 py-3 font-bold">Bonus</th><th className="px-4 py-3 font-bold">Cutoff</th><th className="px-4 py-3 font-bold">O-Level</th><th className="px-4 py-3 font-bold">A-Level</th><th className="px-4 py-3 font-bold">Result</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{results.map((r) => <tr key={r.programmeCode} className="hover:bg-[hsl(var(--muted)/.3)]"><td className="px-4 py-3">{r.programmeName || r.programmeCode}</td><td className="px-4 py-3 font-semibold">{r.totalScore.toFixed(1)}</td><td className="px-4 py-3 font-semibold">{(r.adjustedScore ?? r.totalScore).toFixed(1)}</td><td className="px-4 py-3">{r.genderBonus ? <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(280_65%_55%)]/15 px-2 py-0.5 text-[10px] font-bold text-[hsl(280_65%_55%)]">+1.5</span> : <span className="text-[hsl(var(--muted-foreground))]">-</span>}</td><td className="px-4 py-3">{r.cutoffScore.toFixed(1)}</td><td className="px-4 py-3">{r.oLevelScore.toFixed(1)}</td><td className="px-4 py-3">{r.aLevelScore.toFixed(1)}</td><td className="px-4 py-3">{r.qualified ? <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(160_43%_40%)]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[hsl(160_43%_40%)]">Qualified</span> : <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--destructive))]/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--destructive))]">Below cutoff</span>}</td></tr>)}</tbody></table></div></section>; } catch { return null; } })()}
 
       <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><FileText size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">Personal statement</h2></div><p className="text-sm leading-6 text-[hsl(var(--muted-foreground))]">{app.personalStatement || 'Not provided'}</p></section>
 
@@ -409,8 +500,640 @@ function ApplicationDetailPage() {
 
       <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><FileCheck2 size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">Payment & extras</h2></div><div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3"><DetailField label="Fee paid" value={`${app.feeCurrency || ''} ${app.feePaid ?? 0}`} mono /><DetailField label="Fee required" value={`${app.feeCurrency || ''} ${app.feeRequired ?? 0}`} mono /><DetailField label="Application fee paid" value={boolIcon(app.applicationFeePaid)} /><DetailField label="Payment method" value={app.paymentMethod} /><DetailField label="Payment reference" value={app.paymentReference} /><DetailField label="Terms accepted" value={boolIcon(app.termsAccepted)} /><DetailField label="Additional information" value={app.extras} /></div></section>
 
-    </div><aside className="space-y-6 xl:sticky xl:top-24 xl:self-start"><ReviewPanel app={app} />{app.assignedProgramme && <div className="nexus-card border-l-4 border-l-[hsl(160_43%_40%)] p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Assigned programme</p><p className="mt-2 text-sm font-semibold">{app.assignedProgramme}</p>{app.totalWeightScore != null && <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Weight score: {app.totalWeightScore.toFixed(1)}</p>}</div>}<div className="nexus-card p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Record trail</p><div className="mt-5 space-y-4 border-l border-[hsl(var(--border))] pl-4"><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--primary))]" /><p className="text-xs font-semibold">Application created</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.createdAt, true)}</p></div><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--accent))]" /><p className="text-xs font-semibold">Last updated</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.updatedAt, true)}</p></div>{app.reviewedAt && <div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(160_43%_40%)]" /><p className="text-xs font-semibold">Decision recorded</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.reviewedAt, true)}</p></div>}</div></div></aside></div>
+    </div><aside className="space-y-6 xl:sticky xl:top-24 xl:self-start"><ReviewPanel app={app} /><SuggestedProgrammeCard app={app} />{app.assignedProgramme && <div className="nexus-card border-l-4 border-l-[hsl(160_43%_40%)] p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Assigned programme</p><p className="mt-2 text-sm font-semibold">{app.assignedProgramme}</p>{app.totalWeightScore != null && <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Weight score: {app.totalWeightScore.toFixed(1)}</p>}</div>}<div className="nexus-card p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Record trail</p><div className="mt-5 space-y-4 border-l border-[hsl(var(--border))] pl-4"><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--primary))]" /><p className="text-xs font-semibold">Application created</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.createdAt, true)}</p></div><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--accent))]" /><p className="text-xs font-semibold">Last updated</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.updatedAt, true)}</p></div>{app.reviewedAt && <div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(160_43%_40%)]" /><p className="text-xs font-semibold">Decision recorded</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.reviewedAt, true)}</p></div>}</div></div></aside></div>
   </div>;
+}
+
+function SiteSettingsPage() {
+  const settingsQuery = useGetSiteSettings();
+  const updateMutation = useUpdateSiteSetting();
+
+  const settings = settingsQuery.data || [];
+  const getSetting = (key: string) => settings.find((s) => s.settingKey === key)?.settingValue || '';
+
+  const [portalName, setPortalName] = useState('');
+  const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
+  const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
+  const [heroTagline, setHeroTagline] = useState('');
+  const [heroHeading1, setHeroHeading1] = useState('');
+  const [heroHeading2, setHeroHeading2] = useState('');
+  const [heroHeading3, setHeroHeading3] = useState('');
+  const [heroSubtitle, setHeroSubtitle] = useState('');
+  const [heroCtaDonate, setHeroCtaDonate] = useState('');
+  const [heroCtaSponsor, setHeroCtaSponsor] = useState('');
+  const [heroCtaDonateVisible, setHeroCtaDonateVisible] = useState(true);
+  const [heroCtaSponsorVisible, setHeroCtaSponsorVisible] = useState(true);
+  const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
+  const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
+  const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
+  const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
+  const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
+  const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
+  const [whatWeTeachSubtitle, setWhatWeTeachSubtitle] = useState('');
+  const [whatWeTeachPrograms, setWhatWeTeachPrograms] = useState<Array<{ title: string; duration: string; outcome: string }>>([]);
+  const [whatWeTeachBtnText, setWhatWeTeachBtnText] = useState('');
+  const [whatWeTeachBtnVisible, setWhatWeTeachBtnVisible] = useState(true);
+  const [successStoryTagline, setSuccessStoryTagline] = useState('');
+  const [successStoryQuote, setSuccessStoryQuote] = useState('');
+  const [successStoryAuthor, setSuccessStoryAuthor] = useState('');
+  const [successStoryProgram, setSuccessStoryProgram] = useState('');
+  const [successStoryOutcome, setSuccessStoryOutcome] = useState('');
+  const [successStoryBtnText, setSuccessStoryBtnText] = useState('');
+  const [successStoryBtnVisible, setSuccessStoryBtnVisible] = useState(true);
+  const [successStoryStats, setSuccessStoryStats] = useState<Array<{ val: string; label: string }>>([]);
+  const [donateTagline, setDonateTagline] = useState('');
+  const [donateHeading1, setDonateHeading1] = useState('');
+  const [donateHeading2, setDonateHeading2] = useState('');
+  const [donateSubtitle, setDonateSubtitle] = useState('');
+  const [donateTiers, setDonateTiers] = useState<Array<{ amount: string; impact: string }>>([]);
+  const [donateCtaDonate, setDonateCtaDonate] = useState('');
+  const [donateCtaDonateVisible, setDonateCtaDonateVisible] = useState(true);
+  const [donateCtaSponsor, setDonateCtaSponsor] = useState('');
+  const [donateCtaSponsorVisible, setDonateCtaSponsorVisible] = useState(true);
+  const [footerMission, setFooterMission] = useState('');
+  const [footerEmail, setFooterEmail] = useState('');
+  const [footerPhone, setFooterPhone] = useState('');
+  const [footerWhatsappCta, setFooterWhatsappCta] = useState('');
+  const [footerAddress, setFooterAddress] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    if (settings.length > 0 && !loaded) {
+      setPortalName(getSetting('portal_name'));
+      try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
+      try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
+      setHeroTagline(getSetting('hero_tagline'));
+      setHeroHeading1(getSetting('hero_heading_1'));
+      setHeroHeading2(getSetting('hero_heading_2'));
+      setHeroHeading3(getSetting('hero_heading_3'));
+      setHeroSubtitle(getSetting('hero_subtitle'));
+      setHeroCtaDonate(getSetting('hero_cta_donate'));
+      setHeroCtaSponsor(getSetting('hero_cta_sponsor'));
+      setHeroCtaDonateVisible(getSetting('hero_cta_donate_visible') !== 'false');
+      setHeroCtaSponsorVisible(getSetting('hero_cta_sponsor_visible') !== 'false');
+      setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
+      setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
+      try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
+      setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
+      setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
+      setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
+      setWhatWeTeachSubtitle(getSetting('what_we_teach_subtitle'));
+      try { setWhatWeTeachPrograms(JSON.parse(getSetting('what_we_teach_programs'))); } catch { setWhatWeTeachPrograms([]); }
+      setWhatWeTeachBtnText(getSetting('what_we_teach_btn_text'));
+      setWhatWeTeachBtnVisible(getSetting('what_we_teach_btn_visible') !== 'false');
+      setSuccessStoryTagline(getSetting('success_story_tagline'));
+      setSuccessStoryQuote(getSetting('success_story_quote'));
+      setSuccessStoryAuthor(getSetting('success_story_author'));
+      setSuccessStoryProgram(getSetting('success_story_program'));
+      setSuccessStoryOutcome(getSetting('success_story_outcome'));
+      setSuccessStoryBtnText(getSetting('success_story_btn_text'));
+      setSuccessStoryBtnVisible(getSetting('success_story_btn_visible') !== 'false');
+      try { setSuccessStoryStats(JSON.parse(getSetting('success_story_stats'))); } catch { setSuccessStoryStats([]); }
+      setDonateTagline(getSetting('donate_tagline'));
+      setDonateHeading1(getSetting('donate_heading_1'));
+      setDonateHeading2(getSetting('donate_heading_2'));
+      setDonateSubtitle(getSetting('donate_subtitle'));
+      try { setDonateTiers(JSON.parse(getSetting('donate_tiers'))); } catch { setDonateTiers([]); }
+      setDonateCtaDonate(getSetting('donate_cta_donate'));
+      setDonateCtaDonateVisible(getSetting('donate_cta_donate_visible') !== 'false');
+      setDonateCtaSponsor(getSetting('donate_cta_sponsor'));
+      setDonateCtaSponsorVisible(getSetting('donate_cta_sponsor_visible') !== 'false');
+      setFooterMission(getSetting('footer_mission'));
+      setFooterEmail(getSetting('footer_email'));
+      setFooterPhone(getSetting('footer_phone'));
+      setFooterWhatsappCta(getSetting('footer_whatsapp_cta'));
+      setFooterAddress(getSetting('footer_address'));
+      setLoaded(true);
+    }
+  }, [settings, loaded]);
+
+  const save = async (key: string, value: string) => {
+    await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
+    setSaveMsg(`Saved "${key}"`);
+    setTimeout(() => setSaveMsg(''), 2000);
+  };
+
+  if (settingsQuery.status === 'pending') return <PageLoader label="Loading site settings" />;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="nexus-serif text-2xl font-bold">Site Settings</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">Manage content displayed on the public Application Portal.</p>
+        </div>
+        {saveMsg && <span className="text-sm text-[hsl(160_43%_25%)] font-medium">{saveMsg}</span>}
+      </div>
+
+      {/* Portal Name */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
+        <div className="flex gap-3">
+          <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
+          <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Navigation Links */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
+          <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
+            + Add Link
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
+        <div className="space-y-3">
+          {navLinks.map((link, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
+              <Input value={link.label} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], label: e.target.value }; setNavLinks(next); }} placeholder="Label" />
+              <Input value={link.href} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], href: e.target.value }; setNavLinks(next); }} placeholder="URL" />
+              <button onClick={() => { const next = [...navLinks]; next[i] = { ...next[i], visible: !next[i].visible }; setNavLinks(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${link.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                {link.visible ? 'Visible' : 'Hidden'}
+              </button>
+              <button onClick={() => setNavLinks(navLinks.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
+        </Button>
+      </div>
+
+      {/* CTA Buttons */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
+          <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
+            + Add Button
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
+        <div className="space-y-3">
+          {ctaButtons.map((btn, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
+              <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
+              <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
+              <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
+                <option value="accent">Accent</option>
+                <option value="outline">Outline</option>
+              </select>
+              <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                {btn.visible ? 'Visible' : 'Hidden'}
+              </button>
+              <button onClick={() => setCtaButtons(ctaButtons.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
+        </Button>
+      </div>
+
+      {/* Hero Tagline */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
+        <div className="flex gap-3">
+          <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Communities Since 2010" />
+          <Button onClick={() => save('hero_tagline', heroTagline)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Hero Headings */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Headings</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The large main heading on the homepage hero section. Line 2 is shown in accent color.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 1</label>
+            <div className="flex gap-3">
+              <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Single Mothers" />
+              <Button onClick={() => save('hero_heading_1', heroHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 2 <span className="text-accent font-normal">(accent color)</span></label>
+            <div className="flex gap-3">
+              <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. & Vulnerable Youth" />
+              <Button onClick={() => save('hero_heading_2', heroHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 3</label>
+            <div className="flex gap-3">
+              <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" placeholder="e.g. Through Practical Skills" />
+              <Button onClick={() => save('hero_heading_3', heroHeading3)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hero Subtitle */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Subtitle</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The paragraph text below the main heading on the homepage hero section.</p>
+        <textarea value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. We equip vulnerable youth and single mothers with vocational skills..." />
+        <div className="mt-3">
+          <Button onClick={() => save('hero_subtitle', heroSubtitle)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Hero CTA Buttons */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Buttons</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the hero subtitle. Toggle visibility to show/hide each button.</p>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
+              <Input value={heroCtaDonate} onChange={(e) => setHeroCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
+            </div>
+            <button onClick={() => { setHeroCtaDonateVisible(!heroCtaDonateVisible); save('hero_cta_donate_visible', String(!heroCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaDonateVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_donate', heroCtaDonate)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
+              <Input value={heroCtaSponsor} onChange={(e) => setHeroCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
+            </div>
+            <button onClick={() => { setHeroCtaSponsorVisible(!heroCtaSponsorVisible); save('hero_cta_sponsor_visible', String(!heroCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaSponsorVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_sponsor', heroCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text Button (with arrow icon)</label>
+              <Input value={heroCtaLearnMore} onChange={(e) => setHeroCtaLearnMore(e.target.value)} placeholder="e.g. Learn More" />
+            </div>
+            <button onClick={() => { setHeroCtaLearnMoreVisible(!heroCtaLearnMoreVisible); save('hero_cta_learn_more_visible', String(!heroCtaLearnMoreVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaLearnMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {heroCtaLearnMoreVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('hero_cta_learn_more', heroCtaLearnMore)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Hero Stats */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Hero Stats</h2>
+          <Button variant="outline" size="sm" onClick={() => setHeroStats([...heroStats, { value: '', label: '' }])}>
+            + Add Stat
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered statistics displayed at the bottom of the hero section.</p>
+        <div className="space-y-3">
+          {heroStats.map((stat, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={stat.value} onChange={(e) => { const next = [...heroStats]; next[i] = { ...next[i], value: e.target.value }; setHeroStats(next); }} placeholder="e.g. 1,200+" />
+              <Input value={stat.label} onChange={(e) => { const next = [...heroStats]; next[i] = { ...next[i], label: e.target.value }; setHeroStats(next); }} placeholder="e.g. Students Trained" />
+              <button onClick={() => setHeroStats(heroStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('hero_stats', JSON.stringify(heroStats))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+        </Button>
+      </div>
+
+      {/* Programs Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the program cards on the homepage.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachTagline} onChange={(e) => setWhatWeTeachTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
+              <Button onClick={() => save('what_we_teach_tagline', whatWeTeachTagline)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachHeading1} onChange={(e) => setWhatWeTeachHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Practical Skills That" />
+              <Button onClick={() => save('what_we_teach_heading_1', whatWeTeachHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+            <div className="flex gap-3">
+              <Input value={whatWeTeachHeading2} onChange={(e) => setWhatWeTeachHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Create Real Livelihoods" />
+              <Button onClick={() => save('what_we_teach_heading_2', whatWeTeachHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
+            <textarea value={whatWeTeachSubtitle} onChange={(e) => setWhatWeTeachSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Our vocational programs are designed for immediate employment..." />
+            <div className="mt-2">
+              <Button onClick={() => save('what_we_teach_subtitle', whatWeTeachSubtitle)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Programs List */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Program Cards</h2>
+          <Button variant="outline" size="sm" onClick={() => setWhatWeTeachPrograms([...whatWeTeachPrograms, { title: '', duration: '', outcome: '' }])}>
+            + Add Program
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The vocational program cards displayed in the "What We Teach" section on the homepage.</p>
+        <div className="space-y-3">
+          {whatWeTeachPrograms.map((prog, i) => (
+            <div key={i} className="grid grid-cols-[1fr_1fr_2fr_auto] gap-3 items-center">
+              <Input value={prog.title} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], title: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. Tailoring & Design" />
+              <Input value={prog.duration} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], duration: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. 6 months" />
+              <Input value={prog.outcome} onChange={(e) => { const next = [...whatWeTeachPrograms]; next[i] = { ...next[i], outcome: e.target.value }; setWhatWeTeachPrograms(next); }} placeholder="e.g. Run your own shop" />
+              <button onClick={() => setWhatWeTeachPrograms(whatWeTeachPrograms.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('what_we_teach_programs', JSON.stringify(whatWeTeachPrograms))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Programs'}
+        </Button>
+      </div>
+
+      {/* Programs Section Button */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Section Button</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "View All Programs" link with arrow below the program cards.</p>
+        <div className="flex items-center gap-3">
+          <div className="flex-1 max-w-md">
+            <Input value={whatWeTeachBtnText} onChange={(e) => setWhatWeTeachBtnText(e.target.value)} placeholder="e.g. View All Programs" />
+          </div>
+          <button onClick={() => { setWhatWeTeachBtnVisible(!whatWeTeachBtnVisible); save('what_we_teach_btn_visible', String(!whatWeTeachBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${whatWeTeachBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            {whatWeTeachBtnVisible ? 'Visible' : 'Hidden'}
+          </button>
+          <Button onClick={() => save('what_we_teach_btn_text', whatWeTeachBtnText)} disabled={updateMutation.isPending}>
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Success Story Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Success Story Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The student success story block on the homepage.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+            <div className="flex gap-3">
+              <Input value={successStoryTagline} onChange={(e) => setSuccessStoryTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Success Story" />
+              <Button onClick={() => save('success_story_tagline', successStoryTagline)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Quote</label>
+            <textarea value={successStoryQuote} onChange={(e) => setSuccessStoryQuote(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder='e.g. I went from nothing to owning my own business.' />
+            <div className="mt-2">
+              <Button onClick={() => save('success_story_quote', successStoryQuote)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Author Name</label>
+            <div className="flex gap-3">
+              <Input value={successStoryAuthor} onChange={(e) => setSuccessStoryAuthor(e.target.value)} className="max-w-md" placeholder="e.g. Mary Nakato" />
+              <Button onClick={() => save('success_story_author', successStoryAuthor)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Program</label>
+            <div className="flex gap-3">
+              <Input value={successStoryProgram} onChange={(e) => setSuccessStoryProgram(e.target.value)} className="max-w-md" placeholder="e.g. Tailoring & Design" />
+              <Button onClick={() => save('success_story_program', successStoryProgram)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Outcome (green text)</label>
+            <div className="flex gap-3">
+              <Input value={successStoryOutcome} onChange={(e) => setSuccessStoryOutcome(e.target.value)} className="max-w-md" placeholder="e.g. Now runs a successful tailoring shop" />
+              <Button onClick={() => save('success_story_outcome', successStoryOutcome)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button</label>
+            <div className="flex items-center gap-3">
+              <Input value={successStoryBtnText} onChange={(e) => setSuccessStoryBtnText(e.target.value)} className="max-w-md" placeholder="e.g. Read More Stories" />
+              <button onClick={() => { setSuccessStoryBtnVisible(!successStoryBtnVisible); save('success_story_btn_visible', String(!successStoryBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${successStoryBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                {successStoryBtnVisible ? 'Visible' : 'Hidden'}
+              </button>
+              <Button onClick={() => save('success_story_btn_text', successStoryBtnText)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Success Story Stats */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Success Story Stats</h2>
+          <Button variant="outline" size="sm" onClick={() => setSuccessStoryStats([...successStoryStats, { val: '', label: '' }])}>
+            + Add Stat
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats displayed beside the success story on the homepage.</p>
+        <div className="space-y-3">
+          {successStoryStats.map((stat, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={stat.val} onChange={(e) => { const next = [...successStoryStats]; next[i] = { ...next[i], val: e.target.value }; setSuccessStoryStats(next); }} placeholder="e.g. 1,200+" />
+              <Input value={stat.label} onChange={(e) => { const next = [...successStoryStats]; next[i] = { ...next[i], label: e.target.value }; setSuccessStoryStats(next); }} placeholder="e.g. Lives Changed" />
+              <button onClick={() => setSuccessStoryStats(successStoryStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('success_story_stats', JSON.stringify(successStoryStats))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+        </Button>
+      </div>
+
+      {/* Donate Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Donate Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the donation tier cards on the homepage.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+            <div className="flex gap-3">
+              <Input value={donateTagline} onChange={(e) => setDonateTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
+              <Button onClick={() => save('donate_tagline', donateTagline)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+            <div className="flex gap-3">
+              <Input value={donateHeading1} onChange={(e) => setDonateHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Support Changes" />
+              <Button onClick={() => save('donate_heading_1', donateHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+            <div className="flex gap-3">
+              <Input value={donateHeading2} onChange={(e) => setDonateHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Life" />
+              <Button onClick={() => save('donate_heading_2', donateHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
+            <textarea value={donateSubtitle} onChange={(e) => setDonateSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Every contribution — large or small..." />
+            <div className="mt-2">
+              <Button onClick={() => save('donate_subtitle', donateSubtitle)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Donate Tiers */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="nexus-serif text-lg font-semibold">Donation Tiers</h2>
+          <Button variant="outline" size="sm" onClick={() => setDonateTiers([...donateTiers, { amount: '', impact: '' }])}>
+            + Add Tier
+          </Button>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation amount cards displayed in the "Make A Difference" section.</p>
+        <div className="space-y-3">
+          {donateTiers.map((tier, i) => (
+            <div key={i} className="grid grid-cols-[1fr_2fr_auto] gap-3 items-center">
+              <Input value={tier.amount} onChange={(e) => { const next = [...donateTiers]; next[i] = { ...next[i], amount: e.target.value }; setDonateTiers(next); }} placeholder="e.g. $50" />
+              <Input value={tier.impact} onChange={(e) => { const next = [...donateTiers]; next[i] = { ...next[i], impact: e.target.value }; setDonateTiers(next); }} placeholder="e.g. Sponsors a student for one month" />
+              <button onClick={() => setDonateTiers(donateTiers.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+            </div>
+          ))}
+        </div>
+        <Button className="mt-4" onClick={() => save('donate_tiers', JSON.stringify(donateTiers))} disabled={updateMutation.isPending}>
+          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
+        </Button>
+      </div>
+
+      {/* Donate Section Buttons */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Donate Section Buttons</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the donation tier cards. Toggle visibility to show/hide each button.</p>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
+              <Input value={donateCtaDonate} onChange={(e) => setDonateCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
+            </div>
+            <button onClick={() => { setDonateCtaDonateVisible(!donateCtaDonateVisible); save('donate_cta_donate_visible', String(!donateCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaDonateVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_donate', donateCtaDonate)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
+              <Input value={donateCtaSponsor} onChange={(e) => setDonateCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
+            </div>
+            <button onClick={() => { setDonateCtaSponsorVisible(!donateCtaSponsorVisible); save('donate_cta_sponsor_visible', String(!donateCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaSponsorVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_sponsor', donateCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Footer</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Content displayed in the site footer.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Mission Statement</label>
+            <textarea value={footerMission} onChange={(e) => setFooterMission(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Empowering single mothers and vulnerable youth..." />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Contact Email</label>
+              <input value={footerEmail} onChange={(e) => setFooterEmail(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. info@university.ac.ug" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Phone Number</label>
+              <input value={footerPhone} onChange={(e) => setFooterPhone(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. +256 700 000 000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">WhatsApp Button Text</label>
+              <input value={footerWhatsappCta} onChange={(e) => setFooterWhatsappCta(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. WhatsApp Us" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Address</label>
+              <input value={footerAddress} onChange={(e) => setFooterAddress(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Plot 7, Nakawa Road, Kampala" />
+            </div>
+          </div>
+          <div>
+            <Button onClick={() => {
+              save('footer_mission', footerMission);
+              save('footer_email', footerEmail);
+              save('footer_phone', footerPhone);
+              save('footer_whatsapp_cta', footerWhatsappCta);
+              save('footer_address', footerAddress);
+            }} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Footer'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HomeRedirect() {
@@ -428,6 +1151,7 @@ function Router() {
   return <RoutedErrorBoundary><Switch>
     <Route path="/" component={HomeRedirect} />
     <Route path="/admin/login" component={LoginPage} />
+    <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>
     <Route path="/admin/applications"><AuthGate><ApplicationsPage /></AuthGate></Route>
     <Route path="/admin"><AuthGate><DashboardPage /></AuthGate></Route>
