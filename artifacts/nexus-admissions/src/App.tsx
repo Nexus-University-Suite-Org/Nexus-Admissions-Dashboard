@@ -535,6 +535,9 @@ function SiteSettingsPage() {
   const [whatWeTeachBtnVisible, setWhatWeTeachBtnVisible] = useState(true);
   const [successStoryTagline, setSuccessStoryTagline] = useState('');
   const [successStoryQuote, setSuccessStoryQuote] = useState('');
+  const [successStoryAuthor, setSuccessStoryAuthor] = useState('');
+  const [successStoryProgram, setSuccessStoryProgram] = useState('');
+  const [successStoryOutcome, setSuccessStoryOutcome] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -564,6 +567,9 @@ function SiteSettingsPage() {
       setWhatWeTeachBtnVisible(getSetting('what_we_teach_btn_visible') !== 'false');
       setSuccessStoryTagline(getSetting('success_story_tagline'));
       setSuccessStoryQuote(getSetting('success_story_quote'));
+      setSuccessStoryAuthor(getSetting('success_story_author'));
+      setSuccessStoryProgram(getSetting('success_story_program'));
+      setSuccessStoryOutcome(getSetting('success_story_outcome'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -868,7 +874,7 @@ function SiteSettingsPage() {
       {/* Success Story Section */}
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Success Story Section</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The student success story quote on the homepage.</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The student success story block on the homepage.</p>
         <div className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
@@ -884,6 +890,33 @@ function SiteSettingsPage() {
             <textarea value={successStoryQuote} onChange={(e) => setSuccessStoryQuote(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder='e.g. I went from nothing to owning my own business.' />
             <div className="mt-2">
               <Button onClick={() => save('success_story_quote', successStoryQuote)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Author Name</label>
+            <div className="flex gap-3">
+              <Input value={successStoryAuthor} onChange={(e) => setSuccessStoryAuthor(e.target.value)} className="max-w-md" placeholder="e.g. Mary Nakato" />
+              <Button onClick={() => save('success_story_author', successStoryAuthor)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Program</label>
+            <div className="flex gap-3">
+              <Input value={successStoryProgram} onChange={(e) => setSuccessStoryProgram(e.target.value)} className="max-w-md" placeholder="e.g. Tailoring & Design" />
+              <Button onClick={() => save('success_story_program', successStoryProgram)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Outcome (green text)</label>
+            <div className="flex gap-3">
+              <Input value={successStoryOutcome} onChange={(e) => setSuccessStoryOutcome(e.target.value)} className="max-w-md" placeholder="e.g. Now runs a successful tailoring shop" />
+              <Button onClick={() => save('success_story_outcome', successStoryOutcome)} disabled={updateMutation.isPending}>
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
               </Button>
             </div>
