@@ -541,6 +541,10 @@ function SiteSettingsPage() {
   const [successStoryBtnText, setSuccessStoryBtnText] = useState('');
   const [successStoryBtnVisible, setSuccessStoryBtnVisible] = useState(true);
   const [successStoryStats, setSuccessStoryStats] = useState<Array<{ val: string; label: string }>>([]);
+  const [donateTagline, setDonateTagline] = useState('');
+  const [donateHeading1, setDonateHeading1] = useState('');
+  const [donateHeading2, setDonateHeading2] = useState('');
+  const [donateSubtitle, setDonateSubtitle] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -576,6 +580,10 @@ function SiteSettingsPage() {
       setSuccessStoryBtnText(getSetting('success_story_btn_text'));
       setSuccessStoryBtnVisible(getSetting('success_story_btn_visible') !== 'false');
       try { setSuccessStoryStats(JSON.parse(getSetting('success_story_stats'))); } catch { setSuccessStoryStats([]); }
+      setDonateTagline(getSetting('donate_tagline'));
+      setDonateHeading1(getSetting('donate_heading_1'));
+      setDonateHeading2(getSetting('donate_heading_2'));
+      setDonateSubtitle(getSetting('donate_subtitle'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -963,6 +971,50 @@ function SiteSettingsPage() {
         <Button className="mt-4" onClick={() => save('success_story_stats', JSON.stringify(successStoryStats))} disabled={updateMutation.isPending}>
           {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
         </Button>
+      </div>
+
+      {/* Donate Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Donate Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the donation tier cards on the homepage.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+            <div className="flex gap-3">
+              <Input value={donateTagline} onChange={(e) => setDonateTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
+              <Button onClick={() => save('donate_tagline', donateTagline)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+            <div className="flex gap-3">
+              <Input value={donateHeading1} onChange={(e) => setDonateHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Support Changes" />
+              <Button onClick={() => save('donate_heading_1', donateHeading1)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+            <div className="flex gap-3">
+              <Input value={donateHeading2} onChange={(e) => setDonateHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Life" />
+              <Button onClick={() => save('donate_heading_2', donateHeading2)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
+            <textarea value={donateSubtitle} onChange={(e) => setDonateSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Every contribution — large or small..." />
+            <div className="mt-2">
+              <Button onClick={() => save('donate_subtitle', donateSubtitle)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
