@@ -551,6 +551,10 @@ function SiteSettingsPage() {
   const [donateCtaSponsor, setDonateCtaSponsor] = useState('');
   const [donateCtaSponsorVisible, setDonateCtaSponsorVisible] = useState(true);
   const [footerMission, setFooterMission] = useState('');
+  const [footerEmail, setFooterEmail] = useState('');
+  const [footerPhone, setFooterPhone] = useState('');
+  const [footerWhatsappCta, setFooterWhatsappCta] = useState('');
+  const [footerAddress, setFooterAddress] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
 
@@ -596,6 +600,10 @@ function SiteSettingsPage() {
       setDonateCtaSponsor(getSetting('donate_cta_sponsor'));
       setDonateCtaSponsorVisible(getSetting('donate_cta_sponsor_visible') !== 'false');
       setFooterMission(getSetting('footer_mission'));
+      setFooterEmail(getSetting('footer_email'));
+      setFooterPhone(getSetting('footer_phone'));
+      setFooterWhatsappCta(getSetting('footer_whatsapp_cta'));
+      setFooterAddress(getSetting('footer_address'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1087,16 +1095,40 @@ function SiteSettingsPage() {
       {/* Footer Section */}
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Footer</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The mission text displayed in the site footer.</p>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Content displayed in the site footer.</p>
         <div className="space-y-4">
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Mission Statement</label>
             <textarea value={footerMission} onChange={(e) => setFooterMission(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Empowering single mothers and vulnerable youth..." />
-            <div className="mt-2">
-              <Button onClick={() => save('footer_mission', footerMission)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Contact Email</label>
+              <input value={footerEmail} onChange={(e) => setFooterEmail(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. info@university.ac.ug" />
             </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Phone Number</label>
+              <input value={footerPhone} onChange={(e) => setFooterPhone(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. +256 700 000 000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">WhatsApp Button Text</label>
+              <input value={footerWhatsappCta} onChange={(e) => setFooterWhatsappCta(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. WhatsApp Us" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Address</label>
+              <input value={footerAddress} onChange={(e) => setFooterAddress(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Plot 7, Nakawa Road, Kampala" />
+            </div>
+          </div>
+          <div>
+            <Button onClick={() => {
+              save('footer_mission', footerMission);
+              save('footer_email', footerEmail);
+              save('footer_phone', footerPhone);
+              save('footer_whatsapp_cta', footerWhatsappCta);
+              save('footer_address', footerAddress);
+            }} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Footer'}
+            </Button>
           </div>
         </div>
       </div>
