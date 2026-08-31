@@ -557,6 +557,7 @@ function SiteSettingsPage() {
   const [footerAddress, setFooterAddress] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -626,75 +627,104 @@ function SiteSettingsPage() {
         {saveMsg && <span className="text-sm text-[hsl(160_43%_25%)] font-medium">{saveMsg}</span>}
       </div>
 
-      {/* Portal Name */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
-        <div className="flex gap-3">
-          <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
-          <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
-        </div>
+      {/* Tab Bar */}
+      <div className="flex gap-1 border-b border-[hsl(var(--border))]">
+        {[
+          { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
+          { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
+          { key: 'about' as const, label: 'About', desc: 'About page content' },
+          { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === tab.key
+                ? 'border-[hsl(160_43%_40%)] text-[hsl(160_43%_40%)]'
+                : 'border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Navigation Links */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
-          <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
-            + Add Link
-          </Button>
-        </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
-        <div className="space-y-3">
-          {navLinks.map((link, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
-              <Input value={link.label} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], label: e.target.value }; setNavLinks(next); }} placeholder="Label" />
-              <Input value={link.href} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], href: e.target.value }; setNavLinks(next); }} placeholder="URL" />
-              <button onClick={() => { const next = [...navLinks]; next[i] = { ...next[i], visible: !next[i].visible }; setNavLinks(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${link.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
-                {link.visible ? 'Visible' : 'Hidden'}
-              </button>
-              <button onClick={() => setNavLinks(navLinks.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+      {/* ═══════════════════ GENERAL TAB ═══════════════════ */}
+      {activeTab === 'general' && (
+        <div className="space-y-8 pt-4">
+          {/* Portal Name */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
+            <div className="flex gap-3">
+              <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
+              <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
             </div>
-          ))}
-        </div>
-        <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
-        </Button>
-      </div>
+          </div>
 
-      {/* CTA Buttons */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
-          <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
-            + Add Button
-          </Button>
-        </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
-        <div className="space-y-3">
-          {ctaButtons.map((btn, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
-              <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
-              <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
-              <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
-                <option value="accent">Accent</option>
-                <option value="outline">Outline</option>
-              </select>
-              <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
-                {btn.visible ? 'Visible' : 'Hidden'}
-              </button>
-              <button onClick={() => setCtaButtons(ctaButtons.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+          {/* Navigation Links */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
+              <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
+                + Add Link
+              </Button>
             </div>
-          ))}
-        </div>
-        <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
-        </Button>
-      </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
+            <div className="space-y-3">
+              {navLinks.map((link, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
+                  <Input value={link.label} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], label: e.target.value }; setNavLinks(next); }} placeholder="Label" />
+                  <Input value={link.href} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], href: e.target.value }; setNavLinks(next); }} placeholder="URL" />
+                  <button onClick={() => { const next = [...navLinks]; next[i] = { ...next[i], visible: !next[i].visible }; setNavLinks(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${link.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {link.visible ? 'Visible' : 'Hidden'}
+                  </button>
+                  <button onClick={() => setNavLinks(navLinks.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
+            </Button>
+          </div>
 
-      {/* Hero Tagline */}
+          {/* CTA Buttons */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
+              <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
+                + Add Button
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
+            <div className="space-y-3">
+              {ctaButtons.map((btn, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
+                  <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
+                  <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
+                  <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
+                    <option value="accent">Accent</option>
+                    <option value="outline">Outline</option>
+                  </select>
+                  <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {btn.visible ? 'Visible' : 'Hidden'}
+                  </button>
+                  <button onClick={() => setCtaButtons(ctaButtons.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ HOME TAB ═══════════════════ */}
+      {activeTab === 'home' && (
+        <div className="space-y-8 pt-4">
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
@@ -1091,7 +1121,26 @@ function SiteSettingsPage() {
           </div>
         </div>
       </div>
+        </div>
+      )}
 
+      {/* ═══════════════════ ABOUT TAB ═══════════════════ */}
+      {activeTab === 'about' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">About Page</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Content for the About page — history, mission, team, and values.</p>
+            <div className="flex items-center gap-3 py-8 justify-center text-[hsl(var(--muted-foreground))]">
+              <BookOpen size={18} />
+              <span className="text-sm">Coming soon — About page settings will appear here.</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ FOOTER TAB ═══════════════════ */}
+      {activeTab === 'footer' && (
+        <div className="space-y-8 pt-4">
       {/* Footer Section */}
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Footer</h2>
@@ -1132,6 +1181,8 @@ function SiteSettingsPage() {
           </div>
         </div>
       </div>
+        </div>
+      )}
     </div>
   );
 }
