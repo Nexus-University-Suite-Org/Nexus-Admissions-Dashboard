@@ -566,6 +566,7 @@ function SiteSettingsPage() {
   const [newsFeaturedTitle, setNewsFeaturedTitle] = useState('');
   const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
   const [newsArticles, setNewsArticles] = useState<Array<{ category: string; title: string; excerpt: string }>>([]);
+  const [settingEvents, setSettingEvents] = useState<Array<{ title: string; date: string; type: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
@@ -627,6 +628,7 @@ function SiteSettingsPage() {
       setNewsFeaturedTitle(getSetting('news_featured_title'));
       setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
       try { setNewsArticles(JSON.parse(getSetting('news_articles'))); } catch { setNewsArticles([]); }
+      try { setSettingEvents(JSON.parse(getSetting('news_events'))); } catch { setSettingEvents([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1299,6 +1301,40 @@ function SiteSettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ EVENTS LIST ═══════════════════ */}
+      {activeTab === 'news' && (
+        <div className="space-y-8 pt-4">
+          {/* Events Grid */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Events List</h2>
+              <Button variant="outline" size="sm" onClick={() => setSettingEvents([...settingEvents, { title: '', date: '', type: '' }])}>
+                + Add Event
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The events displayed in the News & Events page grid. These override database events.</p>
+            <div className="space-y-4">
+              {settingEvents.map((event, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Event {i + 1}</span>
+                    <button onClick={() => setSettingEvents(settingEvents.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input value={event.title} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], title: e.target.value }; setSettingEvents(next); }} placeholder="Event name (e.g. Alumni Homecoming)" />
+                    <Input value={event.date} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], date: e.target.value }; setSettingEvents(next); }} placeholder="Date (e.g. March 15, 2026 or TBA)" />
+                    <Input value={event.type} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], type: e.target.value }; setSettingEvents(next); }} placeholder="Type (e.g. Alumni, Cultural)" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('news_events', JSON.stringify(settingEvents))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Events'}
+            </Button>
           </div>
         </div>
       )}
