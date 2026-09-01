@@ -561,6 +561,9 @@ function SiteSettingsPage() {
   const [newsEventsTagline, setNewsEventsTagline] = useState('');
   const [newsEventsHeading, setNewsEventsHeading] = useState('');
   const [newsReadMore, setNewsReadMore] = useState('');
+  const [newsFeaturedCategory, setNewsFeaturedCategory] = useState('');
+  const [newsFeaturedTitle, setNewsFeaturedTitle] = useState('');
+  const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
@@ -617,6 +620,9 @@ function SiteSettingsPage() {
       setNewsEventsTagline(getSetting('news_events_tagline'));
       setNewsEventsHeading(getSetting('news_events_heading'));
       setNewsReadMore(getSetting('news_read_more'));
+      setNewsFeaturedCategory(getSetting('news_featured_category'));
+      setNewsFeaturedTitle(getSetting('news_featured_title'));
+      setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1218,8 +1224,35 @@ function SiteSettingsPage() {
           {/* Featured Article Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Featured Article</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The featured news article displayed at the top of the news list, with a "Read Full Story" link.</p>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Override the featured news article displayed at the top of the news page. Leave blank to use the first article from the database.</p>
             <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category Badge</label>
+                <div className="flex gap-3">
+                  <Input value={newsFeaturedCategory} onChange={(e) => setNewsFeaturedCategory(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
+                  <Button onClick={() => save('news_featured_category', newsFeaturedCategory)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label>
+                <div className="flex gap-3">
+                  <Input value={newsFeaturedTitle} onChange={(e) => setNewsFeaturedTitle(e.target.value)} className="max-w-md" placeholder="e.g. Partnership with MIT Launches Joint Research Program" />
+                  <Button onClick={() => save('news_featured_title', newsFeaturedTitle)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Excerpt</label>
+                <textarea value={newsFeaturedExcerpt} onChange={(e) => setNewsFeaturedExcerpt(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. A five-year collaboration will support quantum computing research..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('news_featured_excerpt', newsFeaturedExcerpt)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Read More Link Text</label>
                 <div className="flex gap-3">
