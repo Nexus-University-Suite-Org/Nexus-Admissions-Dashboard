@@ -204,7 +204,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
 
   const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
   const [admissionReq, setAdmissionReq] = useState(() => parseJson(program?.admissionRequirements, { min_qualification: '', min_grade: '', required_subjects: '', min_points: '', direct_entry: '', diploma_entry: '', mature_age_entry: '', international: '', other: '' }));
-  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }));
+  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }));
   const [intakesList, setIntakesList] = useState(() => parseJson(program?.intakes, [] as { name: string; month: string; academic_year: string; app_open: string; app_close: string; admission_start: string; max_students: number; status: string }[]));
   const [accreditation, setAccreditation] = useState(() => parseJson(program?.accreditation, { status: '', body: '', number: '', date: '', expiry: '', document_url: '' }));
   const [documentsList, setDocumentsList] = useState(() => parseJson(program?.documents, [] as { type: string; name: string; url: string }[]));
@@ -242,7 +242,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
 
   const addYear = () => {
-    const newYear = { year: curriculum.years.length + 1, semesters: [] as typeof curriculum.years[0]['semesters'] };
+    const newYear = { year: curriculum.years.length + 1, semesters: [] as typeof curriculum.years[0]['semesters'], recessTerms: [] as typeof curriculum.years[0]['recessTerms'] };
     for (let s = 1; s <= (form.semestersPerYear || 2); s++) {
       newYear.semesters.push({ semester: s, courses: [] });
     }
@@ -250,23 +250,55 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     set('numberOfYears', curriculum.years.length + 1);
   };
 
-  const addCourse = (yearIdx: number, semIdx: number) => {
+  const addRecessTerm = (yearIdx: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: [...y.recessTerms, { name: `Recess Term ${y.recessTerms.length + 1}`, courses: [] }] } : y)
+    }));
+  };
+
+  const removeRecessTerm = (yearIdx: number, recessIdx: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: y.recessTerms.filter((_, ri) => ri !== recessIdx) } : y)
+    }));
+  };
+
+  const addCourse = (yearIdx: number, semIdx: number, recessIdx?: number) => {
     setCurriculum(c => {
-      const next = { ...c, years: c.years.map((y, yi) => yi === yearIdx ? { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: [...s.courses, { code: '', name: '', credits: 0, type: 'Core', prerequisites: '' }] } : s) } : y) };
+      const next = { ...c, years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, courses: [...r.courses, { code: '', name: '', credits: 0, type: 'Core', prerequisites: '' }] } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: [...s.courses, { code: '', name: '', credits: 0, type: 'Core', prerequisites: '' }] } : s) };
+      }) };
       return next;
     });
   };
 
-  const updateCourse = (yearIdx: number, semIdx: number, courseIdx: number, field: string, value: unknown) => {
+  const updateCourse = (yearIdx: number, semIdx: number, courseIdx: number, field: string, value: unknown, recessIdx?: number) => {
     setCurriculum(c => {
-      const next = { ...c, years: c.years.map((y, yi) => yi === yearIdx ? { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: s.courses.map((cr, cri) => cri === courseIdx ? { ...cr, [field]: value } : cr) } : s) } : y) };
+      const next = { ...c, years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, courses: r.courses.map((cr, cri) => cri === courseIdx ? { ...cr, [field]: value } : cr) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: s.courses.map((cr, cri) => cri === courseIdx ? { ...cr, [field]: value } : cr) } : s) };
+      }) };
       return next;
     });
   };
 
-  const removeCourse = (yearIdx: number, semIdx: number, courseIdx: number) => {
+  const removeCourse = (yearIdx: number, semIdx: number, courseIdx: number, recessIdx?: number) => {
     setCurriculum(c => {
-      const next = { ...c, years: c.years.map((y, yi) => yi === yearIdx ? { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: s.courses.filter((_, cri) => cri !== courseIdx) } : s) } : y) };
+      const next = { ...c, years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, courses: r.courses.filter((_, cri) => cri !== courseIdx) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, courses: s.courses.filter((_, cri) => cri !== courseIdx) } : s) };
+      }) };
       return next;
     });
   };
@@ -301,23 +333,33 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     summary: { title: 'Review & Submit', desc: 'Double-check everything before creating the program.' },
   };
 
-  const totalCredits = curriculum.years.reduce((sum, y) => sum + y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0), 0);
+  const totalCredits = curriculum.years.reduce((sum, y) => {
+    const semCredits = y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0);
+    const recessCredits = (y.recessTerms || []).reduce((s2, rt) => s2 + rt.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0);
+    return sum + semCredits + recessCredits;
+  }, 0);
 
   const semesterFeeSum = (s: { tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number }) => s.tuition + s.registration + s.examination + s.functional + s.ict + s.library + s.medical + s.accommodation + s.other;
 
   const syncFeesToCurriculum = () => {
     setFees(f => {
       const existing = new Map<string, typeof f.year_fees[0]['semesters'][0]>();
-      for (const yf of f.year_fees) for (const s of yf.semesters) existing.set(`${yf.year}-${s.semester}`, s);
-      const year_fees = curriculum.years.map(y => ({
-        year: y.year,
-        semesters: y.semesters.map(sem => {
-          const key = `${y.year}-${sem.semester}`;
+      for (const yf of f.year_fees) for (const s of yf.semesters) existing.set(`${yf.year}-${s.name || s.semester}`, s);
+      const year_fees = curriculum.years.map(y => {
+        const semEntries = y.semesters.map(sem => {
+          const key = `${y.year}-sem-${sem.semester}`;
           const prev = existing.get(key) || { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0 };
           const total = semesterFeeSum(prev);
-          return { ...prev, total };
-        })
-      }));
+          return { ...prev, total, name: `Semester ${sem.semester}`, termType: 'semester' as const };
+        });
+        const recessEntries = (y.recessTerms || []).map((rt, ri) => {
+          const key = `${y.year}-recess-${ri}`;
+          const prev = existing.get(key) || { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0 };
+          const total = semesterFeeSum(prev);
+          return { ...prev, total, name: rt.name || `Recess Term ${ri + 1}`, termType: 'recess' as const };
+        });
+        return { year: y.year, semesters: [...semEntries, ...recessEntries] };
+      });
       return { ...f, year_fees };
     });
   };
@@ -334,7 +376,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
       case 'about': return Boolean(form.programDescription);
       case 'org': return Boolean(form.facultySchool || form.department);
       case 'duration': return Boolean(form.duration > 0 && form.numberOfYears > 0);
-      case 'curriculum': return curriculum.years.length > 0 && curriculum.years.some(y => y.semesters.some(s => s.courses.length > 0));
+      case 'curriculum': return curriculum.years.length > 0 && curriculum.years.some(y => y.semesters.some(s => s.courses.length > 0) || (y.recessTerms || []).some(r => r.courses.length > 0));
       case 'fees': return fees.year_fees.length > 0 && fees.year_fees.some(yf => yf.semesters.some(s => s.total > 0));
       case 'admission': return Boolean(admissionReq.min_qualification);
       case 'intakes': return intakesList.length > 0;
@@ -484,20 +526,23 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                   <Field label="Version" value={curriculum.version} onChange={v => setCurriculum(c => ({ ...c, version: v }))} />
                 </div>
                 <Field label="Academic Year" value={curriculum.academic_year} onChange={v => setCurriculum(c => ({ ...c, academic_year: v }))} />
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] -mt-2">Credits = weight of each course. Typical values: 2–5 per course. Total auto-calculated for the program.</p>
                 {curriculum.years.map((year, yi) => {
                   const yKey = `y${yi}`;
                   const collapsed = collapsedYears.has(yKey);
-                  const yearCredits = year.semesters.reduce((s, sem) => s + sem.courses.reduce((s2, cr) => s2 + (cr.credits || 0), 0), 0);
+                  const semCredits = year.semesters.reduce((s, sem) => s + sem.courses.reduce((s2, cr) => s2 + (cr.credits || 0), 0), 0);
+                  const recessCredits = (year.recessTerms || []).reduce((s, rt) => s + rt.courses.reduce((s2, cr) => s2 + (cr.credits || 0), 0), 0);
+                  const yearCredits = semCredits + recessCredits;
                   return (
                     <div key={yi} className="border border-[hsl(var(--border))] rounded-xl overflow-hidden">
                       <button onClick={() => toggleCollapse(collapsedYears, setCollapsedYears, yKey)} className="w-full flex items-center gap-2 p-4 text-left hover:bg-[hsl(var(--muted)/.3)] cursor-pointer">
                         <BookOpen size={14} className="shrink-0" />
                         <span className="text-sm font-semibold flex-1">Year {year.year}</span>
-                        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{yearCredits} credits</span>
+                        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{yearCredits} credits{(year.recessTerms || []).length > 0 ? ` (${(year.recessTerms || []).length} recess)` : ''}</span>
                         {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                       </button>
                       {!collapsed && (
-                        <div className="border-t border-[hsl(var(--border))] p-4 space-y-3">
+                        <div className="border-t border-[hsl(var(--border))] p-4 space-y-4">
                           {year.semesters.map((sem, si) => (
                             <div key={si} className="ml-4 space-y-2">
                               <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Semester {sem.semester}</p>
@@ -505,9 +550,9 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                 <div key={cri} className="flex items-center gap-2 ml-4">
                                   <Input value={cr.code} onChange={e => updateCourse(yi, si, cri, 'code', e.target.value)} placeholder="Code" className="w-24 text-xs" />
                                   <Input value={cr.name} onChange={e => updateCourse(yi, si, cri, 'name', e.target.value)} placeholder="Course Name" className="flex-1 text-xs" />
-                                  <Input value={cr.credits} onChange={e => updateCourse(yi, si, cri, 'credits', parseInt(e.target.value) || 0)} type="number" placeholder="Cr" className="w-16 text-xs" />
+                                  <Input value={cr.credits} onChange={e => updateCourse(yi, si, cri, 'credits', parseInt(e.target.value) || 0)} type="number" placeholder="Credits" className="w-20 text-xs" title="Credit units for this course" />
                                   <select value={cr.type} onChange={e => updateCourse(yi, si, cri, 'type', e.target.value)} className="text-xs border border-[hsl(var(--border))] rounded-lg px-2 py-1 bg-transparent">
-                                    <option value="Core">Core</option><option value="Elective">Elective</option>
+                                    <option value="Core">Core</option><option value="Elective">Elective</option><option value="Audited">Audited</option>
                                   </select>
                                   <Button variant="ghost" size="sm" onClick={() => removeCourse(yi, si, cri)} className="text-red-500 p-1"><X size={12} /></Button>
                                 </div>
@@ -515,6 +560,27 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                               <Button variant="ghost" size="sm" onClick={() => addCourse(yi, si)} className="ml-4 text-xs"><Plus size={12} className="mr-1" /> Add Course</Button>
                             </div>
                           ))}
+                          {(year.recessTerms || []).map((rt, ri) => (
+                            <div key={`r${ri}`} className="ml-4 space-y-2 border-t border-dashed border-[hsl(var(--border)/.5)] pt-3">
+                              <div className="flex items-center gap-2">
+                                <Input value={rt.name} onChange={e => setCurriculum(c => ({ ...c, years: c.years.map((y, j) => j === yi ? { ...y, recessTerms: y.recessTerms.map((r, k) => k === ri ? { ...r, name: e.target.value } : r) } : y) }))} className="text-xs font-medium w-48 bg-amber-50 border-amber-200" />
+                                <Button variant="ghost" size="sm" onClick={() => removeRecessTerm(yi, ri)} className="text-red-500 p-1"><X size={12} /></Button>
+                              </div>
+                              {rt.courses.map((cr, cri) => (
+                                <div key={cri} className="flex items-center gap-2 ml-4">
+                                  <Input value={cr.code} onChange={e => updateCourse(yi, 0, cri, 'code', e.target.value, ri)} placeholder="Code" className="w-24 text-xs" />
+                                  <Input value={cr.name} onChange={e => updateCourse(yi, 0, cri, 'name', e.target.value, ri)} placeholder="Course Name" className="flex-1 text-xs" />
+                                  <Input value={cr.credits} onChange={e => updateCourse(yi, 0, cri, 'credits', parseInt(e.target.value) || 0, ri)} type="number" placeholder="Credits" className="w-20 text-xs" title="Credit units for this course" />
+                                  <select value={cr.type} onChange={e => updateCourse(yi, 0, cri, 'type', e.target.value, ri)} className="text-xs border border-[hsl(var(--border))] rounded-lg px-2 py-1 bg-transparent">
+                                    <option value="Core">Core</option><option value="Elective">Elective</option><option value="Audited">Audited</option>
+                                  </select>
+                                  <Button variant="ghost" size="sm" onClick={() => removeCourse(yi, 0, cri, ri)} className="text-red-500 p-1"><X size={12} /></Button>
+                                </div>
+                              ))}
+                              <Button variant="ghost" size="sm" onClick={() => addCourse(yi, 0, ri)} className="ml-4 text-xs"><Plus size={12} className="mr-1" /> Add Course</Button>
+                            </div>
+                          ))}
+                          <Button variant="ghost" size="sm" onClick={() => addRecessTerm(yi)} className="ml-4 text-xs text-amber-600 hover:text-amber-700"><Plus size={12} className="mr-1" /> Add Recess Term</Button>
                         </div>
                       )}
                     </div>
@@ -700,7 +766,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                 <SummaryRow label="Study Mode" value={form.studyMode || '—'} />
                 <SummaryRow label="Total Credits" value={String(totalCredits)} />
                 <hr className="border-[hsl(var(--border))]" />
-                <SummaryRow label="Curriculum" value={`${curriculum.years.length} years, ${curriculum.years.reduce((s, y) => s + y.semesters.reduce((s2, sem) => s2 + sem.courses.length, 0), 0)} courses`} />
+                <SummaryRow label="Curriculum" value={`${curriculum.years.length} years, ${curriculum.years.reduce((s, y) => s + y.semesters.reduce((s2, sem) => s2 + sem.courses.length, 0) + (y.recessTerms || []).reduce((s2, rt) => s2 + rt.courses.length, 0), 0)} courses`} />
                 <SummaryRow label="Total Fees" value={`${fees.currency} ${totalProgramFees.toLocaleString()}`} />
                 <SummaryRow label="Intakes" value={`${intakesList.length} intake(s)`} />
                 <SummaryRow label="Accreditation" value={accreditation.status || '—'} />
