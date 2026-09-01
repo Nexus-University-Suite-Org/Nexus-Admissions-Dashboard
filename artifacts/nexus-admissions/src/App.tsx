@@ -571,6 +571,9 @@ function SiteSettingsPage() {
   const [progHeroHeading1, setProgHeroHeading1] = useState('');
   const [progHeroHeading2, setProgHeroHeading2] = useState('');
   const [progHeroDescription, setProgHeroDescription] = useState('');
+  const [progSectionTagline, setProgSectionTagline] = useState('');
+  const [progSectionHeading, setProgSectionHeading] = useState('');
+  const [progSectionDescription, setProgSectionDescription] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'footer'>('general');
@@ -637,6 +640,9 @@ function SiteSettingsPage() {
       setProgHeroHeading1(getSetting('programs_hero_heading_1'));
       setProgHeroHeading2(getSetting('programs_hero_heading_2'));
       setProgHeroDescription(getSetting('programs_hero_description'));
+      setProgSectionTagline(getSetting('programs_section_tagline'));
+      setProgSectionHeading(getSetting('programs_section_heading'));
+      setProgSectionDescription(getSetting('programs_section_description'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1388,6 +1394,41 @@ function SiteSettingsPage() {
                 <div className="flex gap-3">
                   <Input value={progHeroDescription} onChange={(e) => setProgHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. 8 practical programs. Market-driven curricula..." />
                   <Button onClick={() => save('programs_hero_description', progHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Programs Grid Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Grid Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The section below the hero — "Our Programs" / "Choose Your Path".</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionTagline} onChange={(e) => setProgSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Programs" />
+                  <Button onClick={() => save('programs_section_tagline', progSectionTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionHeading} onChange={(e) => setProgSectionHeading(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Path" />
+                  <Button onClick={() => save('programs_section_heading', progSectionHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionDescription} onChange={(e) => setProgSectionDescription(e.target.value)} className="max-w-md" placeholder="e.g. Click on any program to see skills..." />
+                  <Button onClick={() => save('programs_section_description', progSectionDescription)} disabled={updateMutation.isPending}>
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
                 </div>
