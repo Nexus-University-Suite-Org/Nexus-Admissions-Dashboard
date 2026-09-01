@@ -555,9 +555,14 @@ function SiteSettingsPage() {
   const [footerPhone, setFooterPhone] = useState('');
   const [footerWhatsappCta, setFooterWhatsappCta] = useState('');
   const [footerAddress, setFooterAddress] = useState('');
+  const [newsHeroTagline, setNewsHeroTagline] = useState('');
+  const [newsHeroHeading1, setNewsHeroHeading1] = useState('');
+  const [newsHeroHeading2, setNewsHeroHeading2] = useState('');
+  const [newsEventsTagline, setNewsEventsTagline] = useState('');
+  const [newsEventsHeading, setNewsEventsHeading] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -605,6 +610,11 @@ function SiteSettingsPage() {
       setFooterPhone(getSetting('footer_phone'));
       setFooterWhatsappCta(getSetting('footer_whatsapp_cta'));
       setFooterAddress(getSetting('footer_address'));
+      setNewsHeroTagline(getSetting('news_hero_tagline'));
+      setNewsHeroHeading1(getSetting('news_hero_heading_1'));
+      setNewsHeroHeading2(getSetting('news_hero_heading_2'));
+      setNewsEventsTagline(getSetting('news_events_tagline'));
+      setNewsEventsHeading(getSetting('news_events_heading'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -633,6 +643,7 @@ function SiteSettingsPage() {
           { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
           { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
           { key: 'about' as const, label: 'About', desc: 'About page content' },
+          { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -1133,6 +1144,72 @@ function SiteSettingsPage() {
             <div className="flex items-center gap-3 py-8 justify-center text-[hsl(var(--muted-foreground))]">
               <BookOpen size={18} />
               <span className="text-sm">Coming soon — About page settings will appear here.</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ NEWS & EVENTS TAB ═══════════════════ */}
+      {activeTab === 'news' && (
+        <div className="space-y-8 pt-4">
+          {/* News Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">News Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The hero banner at the top of the News & Events page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroTagline} onChange={(e) => setNewsHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. News & Events" />
+                  <Button onClick={() => save('news_hero_tagline', newsHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroHeading1} onChange={(e) => setNewsHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Stories That" />
+                  <Button onClick={() => save('news_hero_heading_1', newsHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroHeading2} onChange={(e) => setNewsHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Inspire" />
+                  <Button onClick={() => save('news_hero_heading_2', newsHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Events Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Events Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area for upcoming events on the News page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+                <div className="flex gap-3">
+                  <Input value={newsEventsTagline} onChange={(e) => setNewsEventsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Upcoming Events" />
+                  <Button onClick={() => save('news_events_tagline', newsEventsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={newsEventsHeading} onChange={(e) => setNewsEventsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Mark Your Calendar" />
+                  <Button onClick={() => save('news_events_heading', newsEventsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
