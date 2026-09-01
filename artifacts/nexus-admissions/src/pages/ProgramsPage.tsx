@@ -275,6 +275,13 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     saveMutation.mutate({ ...form, fees, admissionRequirements: admissionReq, curriculum, intakes: intakesList, accreditation, documents: documentsList });
   };
 
+  const sectionKeys = sections.map(s => s.key);
+  const currentIdx = sectionKeys.indexOf(section);
+  const isFirst = currentIdx === 0;
+  const isLast = currentIdx === sectionKeys.length - 1;
+  const goNext = () => { if (!isLast) setSection(sectionKeys[currentIdx + 1]); };
+  const goBack = () => { if (!isFirst) setSection(sectionKeys[currentIdx - 1]); };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -478,11 +485,20 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
         )}
       </div>
 
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={saveMutation.isPending}>
-          {saveMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : program ? 'Update Program' : 'Create Program'}
-        </Button>
+      <div className="flex justify-between gap-3">
+        <div className="flex gap-2">
+          {!isFirst && <Button variant="outline" onClick={goBack}>Back</Button>}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          {!isLast ? (
+            <Button onClick={goNext}>Next</Button>
+          ) : (
+            <Button onClick={handleSubmit} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? <Loader2 className="animate-spin" size={14} /> : program ? 'Update Program' : 'Create Program'}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
