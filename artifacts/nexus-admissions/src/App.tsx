@@ -177,6 +177,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
   const nav = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/admin/applications', label: 'Applications', icon: ClipboardList },
+    { href: '/admin/programs', label: 'Programs', icon: GraduationCap },
     { href: '/admin/settings', label: 'Site Settings', icon: Settings },
   ];
   const logout = () => {
@@ -1487,6 +1488,9 @@ function SiteSettingsPage() {
   );
 }
 
+import ProgramsPage from './pages/ProgramsPage';
+import CategoriesPage from './pages/CategoriesPage';
+
 function HomeRedirect() {
   const [, setLocation] = useLocation();
   useEffect(() => { setLocation(localStorage.getItem('nap_admin_token') ? '/admin' : '/admin/login'); }, [setLocation]);
@@ -1502,6 +1506,8 @@ function Router() {
   return <RoutedErrorBoundary><Switch>
     <Route path="/" component={HomeRedirect} />
     <Route path="/admin/login" component={LoginPage} />
+    <Route path="/admin/programs/categories"><AuthGate><CategoriesPage /></AuthGate></Route>
+    <Route path="/admin/programs"><AuthGate><ProgramsPage /></AuthGate></Route>
     <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>
     <Route path="/admin/applications"><AuthGate><ApplicationsPage /></AuthGate></Route>
