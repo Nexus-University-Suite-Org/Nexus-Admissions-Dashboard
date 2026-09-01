@@ -565,6 +565,7 @@ function SiteSettingsPage() {
   const [newsFeaturedCategory, setNewsFeaturedCategory] = useState('');
   const [newsFeaturedTitle, setNewsFeaturedTitle] = useState('');
   const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
+  const [newsArticles, setNewsArticles] = useState<Array<{ category: string; title: string; excerpt: string }>>([]);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
@@ -625,6 +626,7 @@ function SiteSettingsPage() {
       setNewsFeaturedCategory(getSetting('news_featured_category'));
       setNewsFeaturedTitle(getSetting('news_featured_title'));
       setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
+      try { setNewsArticles(JSON.parse(getSetting('news_articles'))); } catch { setNewsArticles([]); }
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1221,6 +1223,35 @@ function SiteSettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* News Grid Articles */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">News Grid Articles</h2>
+              <Button variant="outline" size="sm" onClick={() => setNewsArticles([...newsArticles, { category: '', title: '', excerpt: '' }])}>
+                + Add Article
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The news cards displayed in the grid below the featured article. These override database articles.</p>
+            <div className="space-y-4">
+              {newsArticles.map((article, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Article {i + 1}</span>
+                    <button onClick={() => setNewsArticles(newsArticles.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input value={article.category} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], category: e.target.value }; setNewsArticles(next); }} placeholder="Category (e.g. Partnerships)" />
+                    <Input value={article.title} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], title: e.target.value }; setNewsArticles(next); }} placeholder="Title" className="sm:col-span-2" />
+                  </div>
+                  <textarea value={article.excerpt} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], excerpt: e.target.value }; setNewsArticles(next); }} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="Excerpt" />
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('news_articles', JSON.stringify(newsArticles))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Articles'}
+            </Button>
           </div>
 
           {/* Featured Article Section */}
