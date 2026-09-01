@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
-import { customFetch, setBaseUrl, setAuthTokenGetter } from '@workspace/api-client-react';
+import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical } from 'lucide-react';
 
-setBaseUrl('http://localhost:8080');
-setAuthTokenGetter(() => localStorage.getItem('nap_admin_token') || '');
+const NAP_API = 'http://localhost:8080';
 
 type Program = {
   id: number; programName: string; programCode: string; programType: string;
@@ -51,16 +50,16 @@ export default function ProgramsPage() {
 
   const { data: programs = [], isLoading } = useQuery({
     queryKey: ['admin-programs'],
-    queryFn: () => customFetch<Program[]>('/api/v1/admin/programs'),
+    queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
   });
 
   const { data: categories = [] } = useQuery({
     queryKey: ['admin-program-categories'],
-    queryFn: () => customFetch<ProgramCategory[]>('/api/v1/admin/program-categories'),
+    queryFn: () => customFetch<ProgramCategory[]>(`${NAP_API}/api/v1/admin/program-categories`),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => customFetch(`/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-programs'] }),
   });
 
@@ -209,8 +208,8 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const body = { ...data, fees: JSON.stringify(data.fees), admissionRequirements: JSON.stringify(data.admissionRequirements), curriculum: JSON.stringify(data.curriculum), intakes: JSON.stringify(data.intakes), accreditation: JSON.stringify(data.accreditation), documents: JSON.stringify(data.documents) };
-      if (program?.id) return customFetch(`/api/v1/admin/programs/${program.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      return customFetch('/api/v1/admin/programs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      if (program?.id) return customFetch(`${NAP_API}/api/v1/admin/programs/${program.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return customFetch(`${NAP_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
     onSuccess: async (saved: Program) => {
       // Sync categories
@@ -218,12 +217,12 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
         const currentCats = categories.filter(c => c.programs.some(p => p.id === program.id)).map(c => c.id);
         for (const catId of currentCats) {
           if (!selectedCategoryIds.includes(catId)) {
-            await customFetch(`/api/v1/admin/programs/${program.id}/categories/${catId}`, { method: 'DELETE' });
+            await customFetch(`${NAP_API}/api/v1/admin/programs/${program.id}/categories/${catId}`, { method: 'DELETE' });
           }
         }
       }
       for (const catId of selectedCategoryIds) {
-        await customFetch(`/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' });
+        await customFetch(`${NAP_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' });
       }
       queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
       queryClient.invalidateQueries({ queryKey: ['admin-program-categories'] });
