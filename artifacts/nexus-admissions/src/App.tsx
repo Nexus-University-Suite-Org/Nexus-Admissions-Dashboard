@@ -178,6 +178,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
   const nav = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/admin/applications', label: 'Applications', icon: ClipboardList },
+    { href: '/admin/programs', label: 'Programs', icon: GraduationCap },
     { href: '/admin/settings', label: 'Site Settings', icon: Settings },
   ];
   const logout = () => {
@@ -553,8 +554,37 @@ function SiteSettingsPage() {
   const [donateHeading2, setDonateHeading2] = useState('');
   const [donateSubtitle, setDonateSubtitle] = useState('');
   const [donateTiers, setDonateTiers] = useState<Array<{ amount: string; impact: string }>>([]);
+  const [donateCtaDonate, setDonateCtaDonate] = useState('');
+  const [donateCtaDonateVisible, setDonateCtaDonateVisible] = useState(true);
+  const [donateCtaSponsor, setDonateCtaSponsor] = useState('');
+  const [donateCtaSponsorVisible, setDonateCtaSponsorVisible] = useState(true);
+  const [footerMission, setFooterMission] = useState('');
+  const [footerEmail, setFooterEmail] = useState('');
+  const [footerPhone, setFooterPhone] = useState('');
+  const [footerWhatsappCta, setFooterWhatsappCta] = useState('');
+  const [footerAddress, setFooterAddress] = useState('');
+  const [newsHeroTagline, setNewsHeroTagline] = useState('');
+  const [newsHeroHeading1, setNewsHeroHeading1] = useState('');
+  const [newsHeroHeading2, setNewsHeroHeading2] = useState('');
+  const [newsEventsTagline, setNewsEventsTagline] = useState('');
+  const [newsEventsHeading, setNewsEventsHeading] = useState('');
+  const [newsReadMore, setNewsReadMore] = useState('');
+  const [newsReadMoreVisible, setNewsReadMoreVisible] = useState(true);
+  const [newsFeaturedCategory, setNewsFeaturedCategory] = useState('');
+  const [newsFeaturedTitle, setNewsFeaturedTitle] = useState('');
+  const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
+  const [newsArticles, setNewsArticles] = useState<Array<{ category: string; title: string; excerpt: string }>>([]);
+  const [settingEvents, setSettingEvents] = useState<Array<{ title: string; date: string; type: string }>>([]);
+  const [progHeroTagline, setProgHeroTagline] = useState('');
+  const [progHeroHeading1, setProgHeroHeading1] = useState('');
+  const [progHeroHeading2, setProgHeroHeading2] = useState('');
+  const [progHeroDescription, setProgHeroDescription] = useState('');
+  const [progSectionTagline, setProgSectionTagline] = useState('');
+  const [progSectionHeading, setProgSectionHeading] = useState('');
+  const [progSectionDescription, setProgSectionDescription] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -599,6 +629,34 @@ function SiteSettingsPage() {
       setDonateHeading2(getSetting('donate_heading_2'));
       setDonateSubtitle(getSetting('donate_subtitle'));
       try { setDonateTiers(JSON.parse(getSetting('donate_tiers'))); } catch { setDonateTiers([]); }
+      setDonateCtaDonate(getSetting('donate_cta_donate'));
+      setDonateCtaDonateVisible(getSetting('donate_cta_donate_visible') !== 'false');
+      setDonateCtaSponsor(getSetting('donate_cta_sponsor'));
+      setDonateCtaSponsorVisible(getSetting('donate_cta_sponsor_visible') !== 'false');
+      setFooterMission(getSetting('footer_mission'));
+      setFooterEmail(getSetting('footer_email'));
+      setFooterPhone(getSetting('footer_phone'));
+      setFooterWhatsappCta(getSetting('footer_whatsapp_cta'));
+      setFooterAddress(getSetting('footer_address'));
+      setNewsHeroTagline(getSetting('news_hero_tagline'));
+      setNewsHeroHeading1(getSetting('news_hero_heading_1'));
+      setNewsHeroHeading2(getSetting('news_hero_heading_2'));
+      setNewsEventsTagline(getSetting('news_events_tagline'));
+      setNewsEventsHeading(getSetting('news_events_heading'));
+      setNewsReadMore(getSetting('news_read_more'));
+      setNewsReadMoreVisible(getSetting('news_read_more_visible') !== 'false');
+      setNewsFeaturedCategory(getSetting('news_featured_category'));
+      setNewsFeaturedTitle(getSetting('news_featured_title'));
+      setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
+      try { setNewsArticles(JSON.parse(getSetting('news_articles'))); } catch { setNewsArticles([]); }
+      try { setSettingEvents(JSON.parse(getSetting('news_events'))); } catch { setSettingEvents([]); }
+      setProgHeroTagline(getSetting('programs_hero_tagline'));
+      setProgHeroHeading1(getSetting('programs_hero_heading_1'));
+      setProgHeroHeading2(getSetting('programs_hero_heading_2'));
+      setProgHeroDescription(getSetting('programs_hero_description'));
+      setProgSectionTagline(getSetting('programs_section_tagline'));
+      setProgSectionHeading(getSetting('programs_section_heading'));
+      setProgSectionDescription(getSetting('programs_section_description'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -621,124 +679,106 @@ function SiteSettingsPage() {
         {saveMsg && <span className="text-sm text-[hsl(160_43%_25%)] font-medium">{saveMsg}</span>}
       </div>
 
-      {/* Portal Name */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
-        <div className="flex gap-3">
-          <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
-          <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
-        </div>
-      </div>
-
-      {/* About Section */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Edit content shown on the public About page.</p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Section Label</label>
-            <Input value={aboutStoryLabel} onChange={(e) => setAboutStoryLabel(e.target.value)} placeholder="e.g. Our Story" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 1</label>
-            <Input value={aboutStoryHeading1} onChange={(e) => setAboutStoryHeading1(e.target.value)} placeholder="e.g. Built on Hope," />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 2</label>
-            <Input value={aboutStoryHeading2} onChange={(e) => setAboutStoryHeading2(e.target.value)} placeholder="e.g. Powered by Purpose" />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Paragraph</label>
-            <Textarea value={aboutStoryParagraph} onChange={(e) => setAboutStoryParagraph(e.target.value)} rows={4} placeholder="The paragraph shown beneath the hero heading." />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Section Label</label>
-            <Input value={aboutFoundingLabel} onChange={(e) => setAboutFoundingLabel(e.target.value)} placeholder="e.g. Our Founding Story" />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Heading</label>
-            <Input value={aboutFoundingHeading} onChange={(e) => setAboutFoundingHeading(e.target.value)} placeholder="e.g. Why We Started" />
-          </div>
-        </div>
-
-        <div className="mt-5 flex gap-3">
-          <Button
-            onClick={async () => {
-              await save('about_story_label', aboutStoryLabel);
-              await save('about_story_heading_1', aboutStoryHeading1);
-              await save('about_story_heading_2', aboutStoryHeading2);
-              await save('about_story_paragraph', aboutStoryParagraph);
-              await save('about_founding_label', aboutFoundingLabel);
-              await save('about_founding_heading', aboutFoundingHeading);
-            }}
-            disabled={updateMutation.isPending}
+      {/* Tab Bar */}
+      <div className="flex gap-1 border-b border-[hsl(var(--border))]">
+        {[
+          { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
+          { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
+          { key: 'about' as const, label: 'About', desc: 'About page content' },
+          { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
+          { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
+          { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === tab.key
+                ? 'border-[hsl(160_43%_40%)] text-[hsl(160_43%_40%)]'
+                : 'border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+            }`}
           >
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Changes'}
-          </Button>
-        </div>
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      {/* Navigation Links */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
-          <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
-            + Add Link
-          </Button>
-        </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
-        <div className="space-y-3">
-          {navLinks.map((link, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
-              <Input value={link.label} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], label: e.target.value }; setNavLinks(next); }} placeholder="Label" />
-              <Input value={link.href} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], href: e.target.value }; setNavLinks(next); }} placeholder="URL" />
-              <button onClick={() => { const next = [...navLinks]; next[i] = { ...next[i], visible: !next[i].visible }; setNavLinks(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${link.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
-                {link.visible ? 'Visible' : 'Hidden'}
-              </button>
-              <button onClick={() => setNavLinks(navLinks.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+      {/* ═══════════════════ GENERAL TAB ═══════════════════ */}
+      {activeTab === 'general' && (
+        <div className="space-y-8 pt-4">
+          {/* Portal Name */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Portal Name</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
+            <div className="flex gap-3">
+              <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
+              <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+              </Button>
             </div>
-          ))}
-        </div>
-        <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
-        </Button>
-      </div>
+          </div>
 
-      {/* CTA Buttons */}
-      <div className="nexus-card rounded-2xl border p-6">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
-          <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
-            + Add Button
-          </Button>
-        </div>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
-        <div className="space-y-3">
-          {ctaButtons.map((btn, i) => (
-            <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
-              <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
-              <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
-              <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
-                <option value="accent">Accent</option>
-                <option value="outline">Outline</option>
-              </select>
-              <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
-                {btn.visible ? 'Visible' : 'Hidden'}
-              </button>
-              <button onClick={() => setCtaButtons(ctaButtons.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+          {/* Navigation Links */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Navigation Links</h2>
+              <Button variant="outline" size="sm" onClick={() => setNavLinks([...navLinks, { label: 'New Link', href: '/', visible: true }])}>
+                + Add Link
+              </Button>
             </div>
-          ))}
-        </div>
-        <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
-        </Button>
-      </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The menu items in the top navigation bar. Toggle visibility to show/hide each link.</p>
+            <div className="space-y-3">
+              {navLinks.map((link, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center">
+                  <Input value={link.label} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], label: e.target.value }; setNavLinks(next); }} placeholder="Label" />
+                  <Input value={link.href} onChange={(e) => { const next = [...navLinks]; next[i] = { ...next[i], href: e.target.value }; setNavLinks(next); }} placeholder="URL" />
+                  <button onClick={() => { const next = [...navLinks]; next[i] = { ...next[i], visible: !next[i].visible }; setNavLinks(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${link.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {link.visible ? 'Visible' : 'Hidden'}
+                  </button>
+                  <button onClick={() => setNavLinks(navLinks.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
+            </Button>
+          </div>
 
-      {/* Hero Tagline */}
+          {/* CTA Buttons */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">CTA Buttons</h2>
+              <Button variant="outline" size="sm" onClick={() => setCtaButtons([...ctaButtons, { label: 'New Button', href: '/', style: 'outline', visible: true }])}>
+                + Add Button
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Call-to-action buttons in the top navigation bar (e.g. "Apply Now", "Donate").</p>
+            <div className="space-y-3">
+              {ctaButtons.map((btn, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
+                  <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
+                  <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
+                  <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
+                    <option value="accent">Accent</option>
+                    <option value="outline">Outline</option>
+                  </select>
+                  <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {btn.visible ? 'Visible' : 'Hidden'}
+                  </button>
+                  <button onClick={() => setCtaButtons(ctaButtons.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ HOME TAB ═══════════════════ */}
+      {activeTab === 'home' && (
+        <div className="space-y-8 pt-4">
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
@@ -1103,9 +1143,406 @@ function SiteSettingsPage() {
           {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
         </Button>
       </div>
+
+      {/* Donate Section Buttons */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Donate Section Buttons</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The call-to-action buttons below the donation tier cards. Toggle visibility to show/hide each button.</p>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
+              <Input value={donateCtaDonate} onChange={(e) => setDonateCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
+            </div>
+            <button onClick={() => { setDonateCtaDonateVisible(!donateCtaDonateVisible); save('donate_cta_donate_visible', String(!donateCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaDonateVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_donate', donateCtaDonate)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 max-w-md">
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
+              <Input value={donateCtaSponsor} onChange={(e) => setDonateCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
+            </div>
+            <button onClick={() => { setDonateCtaSponsorVisible(!donateCtaSponsorVisible); save('donate_cta_sponsor_visible', String(!donateCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              {donateCtaSponsorVisible ? 'Visible' : 'Hidden'}
+            </button>
+            <Button className="mt-5" onClick={() => save('donate_cta_sponsor', donateCtaSponsor)} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+            </Button>
+          </div>
+        </div>
+      </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ ABOUT TAB ═══════════════════ */}
+      {activeTab === 'about' && (
+        <div className="space-y-8 pt-4">
+          {/* About Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Edit content shown on the public About page.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Section Label</label>
+                <Input value={aboutStoryLabel} onChange={(e) => setAboutStoryLabel(e.target.value)} placeholder="e.g. Our Story" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 1</label>
+                <Input value={aboutStoryHeading1} onChange={(e) => setAboutStoryHeading1(e.target.value)} placeholder="e.g. Built on Hope," />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 2</label>
+                <Input value={aboutStoryHeading2} onChange={(e) => setAboutStoryHeading2(e.target.value)} placeholder="e.g. Powered by Purpose" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Paragraph</label>
+                <Textarea value={aboutStoryParagraph} onChange={(e) => setAboutStoryParagraph(e.target.value)} rows={4} placeholder="The paragraph shown beneath the hero heading." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Section Label</label>
+                <Input value={aboutFoundingLabel} onChange={(e) => setAboutFoundingLabel(e.target.value)} placeholder="e.g. Our Founding Story" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Heading</label>
+                <Input value={aboutFoundingHeading} onChange={(e) => setAboutFoundingHeading(e.target.value)} placeholder="e.g. Why We Started" />
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <Button
+                onClick={async () => {
+                  await save('about_story_label', aboutStoryLabel);
+                  await save('about_story_heading_1', aboutStoryHeading1);
+                  await save('about_story_heading_2', aboutStoryHeading2);
+                  await save('about_story_paragraph', aboutStoryParagraph);
+                  await save('about_founding_label', aboutFoundingLabel);
+                  await save('about_founding_heading', aboutFoundingHeading);
+                }}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Changes'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ NEWS & EVENTS TAB ═══════════════════ */}
+      {activeTab === 'news' && (
+        <div className="space-y-8 pt-4">
+          {/* News Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">News Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The hero banner at the top of the News & Events page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroTagline} onChange={(e) => setNewsHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. News & Events" />
+                  <Button onClick={() => save('news_hero_tagline', newsHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroHeading1} onChange={(e) => setNewsHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Stories That" />
+                  <Button onClick={() => save('news_hero_heading_1', newsHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={newsHeroHeading2} onChange={(e) => setNewsHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Inspire" />
+                  <Button onClick={() => save('news_hero_heading_2', newsHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Events Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Events Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area for upcoming events on the News page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
+                <div className="flex gap-3">
+                  <Input value={newsEventsTagline} onChange={(e) => setNewsEventsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Upcoming Events" />
+                  <Button onClick={() => save('news_events_tagline', newsEventsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={newsEventsHeading} onChange={(e) => setNewsEventsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Mark Your Calendar" />
+                  <Button onClick={() => save('news_events_heading', newsEventsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* News Grid Articles */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">News Grid Articles</h2>
+              <Button variant="outline" size="sm" onClick={() => setNewsArticles([...newsArticles, { category: '', title: '', excerpt: '' }])}>
+                + Add Article
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The news cards displayed in the grid below the featured article. These override database articles.</p>
+            <div className="space-y-4">
+              {newsArticles.map((article, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Article {i + 1}</span>
+                    <button onClick={() => setNewsArticles(newsArticles.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input value={article.category} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], category: e.target.value }; setNewsArticles(next); }} placeholder="Category (e.g. Partnerships)" />
+                    <Input value={article.title} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], title: e.target.value }; setNewsArticles(next); }} placeholder="Title" className="sm:col-span-2" />
+                  </div>
+                  <textarea value={article.excerpt} onChange={(e) => { const next = [...newsArticles]; next[i] = { ...next[i], excerpt: e.target.value }; setNewsArticles(next); }} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="Excerpt" />
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('news_articles', JSON.stringify(newsArticles))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Articles'}
+            </Button>
+          </div>
+
+          {/* Featured Article Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Featured Article</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Override the featured news article displayed at the top of the news page. Leave blank to use the first article from the database.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category Badge</label>
+                <div className="flex gap-3">
+                  <Input value={newsFeaturedCategory} onChange={(e) => setNewsFeaturedCategory(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
+                  <Button onClick={() => save('news_featured_category', newsFeaturedCategory)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label>
+                <div className="flex gap-3">
+                  <Input value={newsFeaturedTitle} onChange={(e) => setNewsFeaturedTitle(e.target.value)} className="max-w-md" placeholder="e.g. Partnership with MIT Launches Joint Research Program" />
+                  <Button onClick={() => save('news_featured_title', newsFeaturedTitle)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Excerpt</label>
+                <textarea value={newsFeaturedExcerpt} onChange={(e) => setNewsFeaturedExcerpt(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. A five-year collaboration will support quantum computing research..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('news_featured_excerpt', newsFeaturedExcerpt)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Read More Link Text</label>
+                <div className="flex items-center gap-3">
+                  <Input value={newsReadMore} onChange={(e) => setNewsReadMore(e.target.value)} className="max-w-md" placeholder="e.g. Read Full Story" />
+                  <button onClick={() => { setNewsReadMoreVisible(!newsReadMoreVisible); save('news_read_more_visible', String(!newsReadMoreVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${newsReadMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {newsReadMoreVisible ? 'Visible' : 'Hidden'}
+                  </button>
+                  <Button onClick={() => save('news_read_more', newsReadMore)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ EVENTS LIST ═══════════════════ */}
+      {activeTab === 'news' && (
+        <div className="space-y-8 pt-4">
+          {/* Events Grid */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Events List</h2>
+              <Button variant="outline" size="sm" onClick={() => setSettingEvents([...settingEvents, { title: '', date: '', type: '' }])}>
+                + Add Event
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The events displayed in the News & Events page grid. These override database events.</p>
+            <div className="space-y-4">
+              {settingEvents.map((event, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Event {i + 1}</span>
+                    <button onClick={() => setSettingEvents(settingEvents.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Input value={event.title} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], title: e.target.value }; setSettingEvents(next); }} placeholder="Event name (e.g. Alumni Homecoming)" />
+                    <Input value={event.date} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], date: e.target.value }; setSettingEvents(next); }} placeholder="Date (e.g. March 15, 2026 or TBA)" />
+                    <Input value={event.type} onChange={(e) => { const next = [...settingEvents]; next[i] = { ...next[i], type: e.target.value }; setSettingEvents(next); }} placeholder="Type (e.g. Alumni, Cultural)" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('news_events', JSON.stringify(settingEvents))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Events'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PROGRAMS TAB ═══════════════════ */}
+      {activeTab === 'programs' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Programs page — "What We Teach".</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroTagline} onChange={(e) => setProgHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
+                  <Button onClick={() => save('programs_hero_tagline', progHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroHeading1} onChange={(e) => setProgHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Vocational Programs" />
+                  <Button onClick={() => save('programs_hero_heading_1', progHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroHeading2} onChange={(e) => setProgHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. That Build Real Futures" />
+                  <Button onClick={() => save('programs_hero_heading_2', progHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroDescription} onChange={(e) => setProgHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. 8 practical programs. Market-driven curricula..." />
+                  <Button onClick={() => save('programs_hero_description', progHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Programs Grid Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Programs Grid Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The section below the hero — "Our Programs" / "Choose Your Path".</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionTagline} onChange={(e) => setProgSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Programs" />
+                  <Button onClick={() => save('programs_section_tagline', progSectionTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionHeading} onChange={(e) => setProgSectionHeading(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Path" />
+                  <Button onClick={() => save('programs_section_heading', progSectionHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={progSectionDescription} onChange={(e) => setProgSectionDescription(e.target.value)} className="max-w-md" placeholder="e.g. Click on any program to see skills..." />
+                  <Button onClick={() => save('programs_section_description', progSectionDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ FOOTER TAB ═══════════════════ */}
+      {activeTab === 'footer' && (
+        <div className="space-y-8 pt-4">
+      {/* Footer Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Footer</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Content displayed in the site footer.</p>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Mission Statement</label>
+            <textarea value={footerMission} onChange={(e) => setFooterMission(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Empowering single mothers and vulnerable youth..." />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Contact Email</label>
+              <input value={footerEmail} onChange={(e) => setFooterEmail(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. info@university.ac.ug" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Phone Number</label>
+              <input value={footerPhone} onChange={(e) => setFooterPhone(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. +256 700 000 000" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">WhatsApp Button Text</label>
+              <input value={footerWhatsappCta} onChange={(e) => setFooterWhatsappCta(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. WhatsApp Us" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Address</label>
+              <input value={footerAddress} onChange={(e) => setFooterAddress(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Plot 7, Nakawa Road, Kampala" />
+            </div>
+          </div>
+          <div>
+            <Button onClick={() => {
+              save('footer_mission', footerMission);
+              save('footer_email', footerEmail);
+              save('footer_phone', footerPhone);
+              save('footer_whatsapp_cta', footerWhatsappCta);
+              save('footer_address', footerAddress);
+            }} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Footer'}
+            </Button>
+          </div>
+        </div>
+      </div>
+        </div>
+      )}
     </div>
   );
 }
+
+import ProgramsPage from './pages/ProgramsPage';
+import CategoriesPage from './pages/CategoriesPage';
 
 function HomeRedirect() {
   const [, setLocation] = useLocation();
@@ -1122,6 +1559,8 @@ function Router() {
   return <RoutedErrorBoundary><Switch>
     <Route path="/" component={HomeRedirect} />
     <Route path="/admin/login" component={LoginPage} />
+    <Route path="/admin/programs/categories"><AuthGate><CategoriesPage /></AuthGate></Route>
+    <Route path="/admin/programs"><AuthGate><ProgramsPage /></AuthGate></Route>
     <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>
     <Route path="/admin/applications"><AuthGate><ApplicationsPage /></AuthGate></Route>
