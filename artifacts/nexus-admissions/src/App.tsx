@@ -561,6 +561,7 @@ function SiteSettingsPage() {
   const [newsEventsTagline, setNewsEventsTagline] = useState('');
   const [newsEventsHeading, setNewsEventsHeading] = useState('');
   const [newsReadMore, setNewsReadMore] = useState('');
+  const [newsReadMoreVisible, setNewsReadMoreVisible] = useState(true);
   const [newsFeaturedCategory, setNewsFeaturedCategory] = useState('');
   const [newsFeaturedTitle, setNewsFeaturedTitle] = useState('');
   const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
@@ -620,6 +621,7 @@ function SiteSettingsPage() {
       setNewsEventsTagline(getSetting('news_events_tagline'));
       setNewsEventsHeading(getSetting('news_events_heading'));
       setNewsReadMore(getSetting('news_read_more'));
+      setNewsReadMoreVisible(getSetting('news_read_more_visible') !== 'false');
       setNewsFeaturedCategory(getSetting('news_featured_category'));
       setNewsFeaturedTitle(getSetting('news_featured_title'));
       setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
@@ -1255,8 +1257,11 @@ function SiteSettingsPage() {
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Read More Link Text</label>
-                <div className="flex gap-3">
+                <div className="flex items-center gap-3">
                   <Input value={newsReadMore} onChange={(e) => setNewsReadMore(e.target.value)} className="max-w-md" placeholder="e.g. Read Full Story" />
+                  <button onClick={() => { setNewsReadMoreVisible(!newsReadMoreVisible); save('news_read_more_visible', String(!newsReadMoreVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${newsReadMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {newsReadMoreVisible ? 'Visible' : 'Hidden'}
+                  </button>
                   <Button onClick={() => save('news_read_more', newsReadMore)} disabled={updateMutation.isPending}>
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
