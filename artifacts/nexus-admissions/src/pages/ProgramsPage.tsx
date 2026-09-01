@@ -271,8 +271,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     { key: 'documents', label: 'Documents' }, { key: 'presentation', label: 'Presentation' },
   ] as const;
 
+  const totalCredits = curriculum.years.reduce((sum, y) => y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0), sum);
+
   const handleSubmit = () => {
-    saveMutation.mutate({ ...form, fees, admissionRequirements: admissionReq, curriculum, intakes: intakesList, accreditation, documents: documentsList });
+    saveMutation.mutate({ ...form, totalCreditUnits: totalCredits, fees, admissionRequirements: admissionReq, curriculum, intakes: intakesList, accreditation, documents: documentsList });
   };
 
   const sectionKeys = sections.map(s => s.key);
@@ -321,6 +323,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
         )}
         {section === 'duration' && (
           <>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] -mt-2 mb-2">How long the program takes. Fill in the structure — credit units auto-calculate from Curriculum.</p>
             <div className="grid grid-cols-3 gap-4">
               <Field label="Duration" value={form.duration} onChange={v => set('duration', parseInt(v) || 0)} type="number" />
               <SelectField label="Duration Unit" value={form.durationUnit} onChange={v => set('durationUnit', v)} options={DURATION_UNITS} />
@@ -329,7 +332,11 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             <div className="grid grid-cols-3 gap-4">
               <Field label="Number of Semesters" value={form.numberOfSemesters} onChange={v => set('numberOfSemesters', parseInt(v) || 2)} type="number" />
               <Field label="Semesters Per Year" value={form.semestersPerYear} onChange={v => set('semestersPerYear', parseInt(v) || 2)} type="number" />
-              <Field label="Total Credit Units" value={form.totalCreditUnits} onChange={v => set('totalCreditUnits', parseInt(v) || 0)} type="number" />
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Total Credit Units</label>
+                <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-4 py-2 text-sm font-bold">{totalCredits}</div>
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Auto-calculated from curriculum courses</p>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <SelectField label="Study Mode" value={form.studyMode} onChange={v => set('studyMode', v)} options={STUDY_MODES} />
