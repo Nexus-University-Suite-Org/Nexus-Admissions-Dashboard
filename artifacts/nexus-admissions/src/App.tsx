@@ -58,6 +58,7 @@ import {
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -512,6 +513,12 @@ function SiteSettingsPage() {
   const getSetting = (key: string) => settings.find((s) => s.settingKey === key)?.settingValue || '';
 
   const [portalName, setPortalName] = useState('');
+  const [aboutStoryLabel, setAboutStoryLabel] = useState('');
+  const [aboutStoryHeading1, setAboutStoryHeading1] = useState('');
+  const [aboutStoryHeading2, setAboutStoryHeading2] = useState('');
+  const [aboutStoryParagraph, setAboutStoryParagraph] = useState('');
+  const [aboutFoundingLabel, setAboutFoundingLabel] = useState('');
+  const [aboutFoundingHeading, setAboutFoundingHeading] = useState('');
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
   const [heroTagline, setHeroTagline] = useState('');
@@ -552,6 +559,12 @@ function SiteSettingsPage() {
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
       setPortalName(getSetting('portal_name'));
+      setAboutStoryLabel(getSetting('about_story_label'));
+      setAboutStoryHeading1(getSetting('about_story_heading_1'));
+      setAboutStoryHeading2(getSetting('about_story_heading_2'));
+      setAboutStoryParagraph(getSetting('about_story_paragraph'));
+      setAboutFoundingLabel(getSetting('about_founding_label'));
+      setAboutFoundingHeading(getSetting('about_founding_heading'));
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
       setHeroTagline(getSetting('hero_tagline'));
@@ -616,6 +629,55 @@ function SiteSettingsPage() {
           <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
           <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
             {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* About Section */}
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Edit content shown on the public About page.</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div>
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Section Label</label>
+            <Input value={aboutStoryLabel} onChange={(e) => setAboutStoryLabel(e.target.value)} placeholder="e.g. Our Story" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 1</label>
+            <Input value={aboutStoryHeading1} onChange={(e) => setAboutStoryHeading1(e.target.value)} placeholder="e.g. Built on Hope," />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 2</label>
+            <Input value={aboutStoryHeading2} onChange={(e) => setAboutStoryHeading2(e.target.value)} placeholder="e.g. Powered by Purpose" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Paragraph</label>
+            <Textarea value={aboutStoryParagraph} onChange={(e) => setAboutStoryParagraph(e.target.value)} rows={4} placeholder="The paragraph shown beneath the hero heading." />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Section Label</label>
+            <Input value={aboutFoundingLabel} onChange={(e) => setAboutFoundingLabel(e.target.value)} placeholder="e.g. Our Founding Story" />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Heading</label>
+            <Input value={aboutFoundingHeading} onChange={(e) => setAboutFoundingHeading(e.target.value)} placeholder="e.g. Why We Started" />
+          </div>
+        </div>
+
+        <div className="mt-5 flex gap-3">
+          <Button
+            onClick={async () => {
+              await save('about_story_label', aboutStoryLabel);
+              await save('about_story_heading_1', aboutStoryHeading1);
+              await save('about_story_heading_2', aboutStoryHeading2);
+              await save('about_story_paragraph', aboutStoryParagraph);
+              await save('about_founding_label', aboutFoundingLabel);
+              await save('about_founding_heading', aboutFoundingHeading);
+            }}
+            disabled={updateMutation.isPending}
+          >
+            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Changes'}
           </Button>
         </div>
       </div>
