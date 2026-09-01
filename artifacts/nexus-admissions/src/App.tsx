@@ -575,9 +575,24 @@ function SiteSettingsPage() {
   const [progSectionTagline, setProgSectionTagline] = useState('');
   const [progSectionHeading, setProgSectionHeading] = useState('');
   const [progSectionDescription, setProgSectionDescription] = useState('');
+  const [storiesHeroTagline, setStoriesHeroTagline] = useState('');
+  const [storiesHeroHeading1, setStoriesHeroHeading1] = useState('');
+  const [storiesHeroHeading2, setStoriesHeroHeading2] = useState('');
+  const [storiesHeroDescription, setStoriesHeroDescription] = useState('');
+  const [storiesSectionTagline, setStoriesSectionTagline] = useState('');
+  const [storiesSectionHeading1, setStoriesSectionHeading1] = useState('');
+  const [storiesSectionHeading2, setStoriesSectionHeading2] = useState('');
+  const [storiesCtaTagline, setStoriesCtaTagline] = useState('');
+  const [storiesCtaHeading1, setStoriesCtaHeading1] = useState('');
+  const [storiesCtaHeading2, setStoriesCtaHeading2] = useState('');
+  const [storiesCtaDescription, setStoriesCtaDescription] = useState('');
+  const [storiesCtaBtn1Text, setStoriesCtaBtn1Text] = useState('');
+  const [storiesCtaBtn1Visible, setStoriesCtaBtn1Visible] = useState(true);
+  const [storiesCtaBtn2Text, setStoriesCtaBtn2Text] = useState('');
+  const [storiesCtaBtn2Visible, setStoriesCtaBtn2Visible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -644,6 +659,21 @@ function SiteSettingsPage() {
       setProgSectionTagline(getSetting('programs_section_tagline'));
       setProgSectionHeading(getSetting('programs_section_heading'));
       setProgSectionDescription(getSetting('programs_section_description'));
+      setStoriesHeroTagline(getSetting('stories_hero_tagline'));
+      setStoriesHeroHeading1(getSetting('stories_hero_heading_1'));
+      setStoriesHeroHeading2(getSetting('stories_hero_heading_2'));
+      setStoriesHeroDescription(getSetting('stories_hero_description'));
+      setStoriesSectionTagline(getSetting('stories_section_tagline'));
+      setStoriesSectionHeading1(getSetting('stories_section_heading_1'));
+      setStoriesSectionHeading2(getSetting('stories_section_heading_2'));
+      setStoriesCtaTagline(getSetting('stories_cta_tagline'));
+      setStoriesCtaHeading1(getSetting('stories_cta_heading_1'));
+      setStoriesCtaHeading2(getSetting('stories_cta_heading_2'));
+      setStoriesCtaDescription(getSetting('stories_cta_description'));
+      setStoriesCtaBtn1Text(getSetting('stories_cta_btn1_text'));
+      setStoriesCtaBtn1Visible(getSetting('stories_cta_btn1_visible') !== 'false');
+      setStoriesCtaBtn2Text(getSetting('stories_cta_btn2_text'));
+      setStoriesCtaBtn2Visible(getSetting('stories_cta_btn2_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -674,6 +704,7 @@ function SiteSettingsPage() {
           { key: 'about' as const, label: 'About', desc: 'About page content' },
           { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
           { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
+          { key: 'stories' as const, label: 'Student Stories', desc: 'Student stories page hero & content' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -1433,6 +1464,166 @@ function SiteSettingsPage() {
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ STUDENT STORIES TAB ═══════════════════ */}
+      {activeTab === 'stories' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Student Stories page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroTagline} onChange={(e) => setStoriesHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Stories" />
+                  <Button onClick={() => save('stories_hero_tagline', storiesHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroHeading1} onChange={(e) => setStoriesHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Real People." />
+                  <Button onClick={() => save('stories_hero_heading_1', storiesHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroHeading2} onChange={(e) => setStoriesHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation." />
+                  <Button onClick={() => save('stories_hero_heading_2', storiesHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroDescription} onChange={(e) => setStoriesHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a person..." />
+                  <Button onClick={() => save('stories_hero_description', storiesHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The section heading above the student stories list.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionTagline} onChange={(e) => setStoriesSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Their Journeys" />
+                  <Button onClick={() => save('stories_section_tagline', storiesSectionTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionHeading1} onChange={(e) => setStoriesSectionHeading1(e.target.value)} className="max-w-md" placeholder="e.g. From Hardship" />
+                  <Button onClick={() => save('stories_section_heading_1', storiesSectionHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionHeading2} onChange={(e) => setStoriesSectionHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Hope" />
+                  <Button onClick={() => save('stories_section_heading_2', storiesSectionHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call to Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The bottom CTA section of the Student Stories page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaTagline} onChange={(e) => setStoriesCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Be Part of the Story" />
+                  <Button onClick={() => save('stories_cta_tagline', storiesCtaTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaHeading1} onChange={(e) => setStoriesCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next" />
+                  <Button onClick={() => save('stories_cta_heading_1', storiesCtaHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaHeading2} onChange={(e) => setStoriesCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Success Story" />
+                  <Button onClick={() => save('stories_cta_heading_2', storiesCtaHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaDescription} onChange={(e) => setStoriesCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Every student who walks through our doors..." />
+                  <Button onClick={() => save('stories_cta_description', storiesCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
+                  <div className="flex gap-3">
+                    <Input value={storiesCtaBtn1Text} onChange={(e) => setStoriesCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                    <button onClick={() => { setStoriesCtaBtn1Visible(!storiesCtaBtn1Visible); save('stories_cta_btn1_visible', String(!storiesCtaBtn1Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                      {storiesCtaBtn1Visible ? 'Visible' : 'Hidden'}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
+                  <div className="flex gap-3">
+                    <Input value={storiesCtaBtn2Text} onChange={(e) => setStoriesCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. View Programs" />
+                    <button onClick={() => { setStoriesCtaBtn2Visible(!storiesCtaBtn2Visible); save('stories_cta_btn2_visible', String(!storiesCtaBtn2Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                      {storiesCtaBtn2Visible ? 'Visible' : 'Hidden'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <Button onClick={() => {
+                  save('stories_cta_tagline', storiesCtaTagline);
+                  save('stories_cta_heading_1', storiesCtaHeading1);
+                  save('stories_cta_heading_2', storiesCtaHeading2);
+                  save('stories_cta_description', storiesCtaDescription);
+                  save('stories_cta_btn1_text', storiesCtaBtn1Text);
+                  save('stories_cta_btn2_text', storiesCtaBtn2Text);
+                }} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save CTA'}
+                </Button>
               </div>
             </div>
           </div>
