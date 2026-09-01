@@ -560,6 +560,7 @@ function SiteSettingsPage() {
   const [newsHeroHeading2, setNewsHeroHeading2] = useState('');
   const [newsEventsTagline, setNewsEventsTagline] = useState('');
   const [newsEventsHeading, setNewsEventsHeading] = useState('');
+  const [newsReadMore, setNewsReadMore] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
@@ -615,6 +616,7 @@ function SiteSettingsPage() {
       setNewsHeroHeading2(getSetting('news_hero_heading_2'));
       setNewsEventsTagline(getSetting('news_events_tagline'));
       setNewsEventsHeading(getSetting('news_events_heading'));
+      setNewsReadMore(getSetting('news_read_more'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -1206,6 +1208,23 @@ function SiteSettingsPage() {
                 <div className="flex gap-3">
                   <Input value={newsEventsHeading} onChange={(e) => setNewsEventsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Mark Your Calendar" />
                   <Button onClick={() => save('news_events_heading', newsEventsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Featured Article Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Featured Article</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The featured news article displayed at the top of the news list, with a "Read Full Story" link.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Read More Link Text</label>
+                <div className="flex gap-3">
+                  <Input value={newsReadMore} onChange={(e) => setNewsReadMore(e.target.value)} className="max-w-md" placeholder="e.g. Read Full Story" />
+                  <Button onClick={() => save('news_read_more', newsReadMore)} disabled={updateMutation.isPending}>
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
                 </div>
