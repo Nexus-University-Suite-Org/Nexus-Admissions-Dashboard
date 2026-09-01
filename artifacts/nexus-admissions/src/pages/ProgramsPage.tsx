@@ -204,7 +204,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
 
   const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
   const [admissionReq, setAdmissionReq] = useState(() => parseJson(program?.admissionRequirements, { min_qualification: '', min_grade: '', required_subjects: '', min_points: '', direct_entry: '', diploma_entry: '', mature_age_entry: '', international: '', other: '' }));
-  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }));
+  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }[] }));
   const [intakesList, setIntakesList] = useState(() => parseJson(program?.intakes, [] as { name: string; month: string; academic_year: string; app_open: string; app_close: string; admission_start: string; max_students: number; status: string }[]));
   const [accreditation, setAccreditation] = useState(() => parseJson(program?.accreditation, { status: '', body: '', number: '', date: '', expiry: '', document_url: '' }));
   const [documentsList, setDocumentsList] = useState(() => parseJson(program?.documents, [] as { type: string; name: string; url: string }[]));
@@ -261,6 +261,86 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     setCurriculum(c => ({
       ...c,
       years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: y.recessTerms.filter((_, ri) => ri !== recessIdx) } : y)
+    }));
+  };
+
+  const addElectiveGroup = (yearIdx: number, semIdx: number, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        const group = { groupName: '', requiredCount: 1, courses: [{ code: '', name: '', credits: 0, type: 'Elective', prerequisites: '' }] };
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: [...(r.electiveGroups || []), group] } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: [...(s.electiveGroups || []), group] } : s) };
+      })
+    }));
+  };
+
+  const removeElectiveGroup = (yearIdx: number, semIdx: number, groupIdx: number, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: (r.electiveGroups || []).filter((_, gi) => gi !== groupIdx) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: (s.electiveGroups || []).filter((_, gi) => gi !== groupIdx) } : s) };
+      })
+    }));
+  };
+
+  const updateElectiveGroupField = (yearIdx: number, semIdx: number, groupIdx: number, field: string, value: unknown, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: (r.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, [field]: value } : g) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: (s.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, [field]: value } : g) } : s) };
+      })
+    }));
+  };
+
+  const addCourseToElectiveGroup = (yearIdx: number, semIdx: number, groupIdx: number, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        const newCourse = { code: '', name: '', credits: 0, type: 'Elective', prerequisites: '' };
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: (r.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: [...g.courses, newCourse] } : g) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: (s.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: [...g.courses, newCourse] } : g) } : s) };
+      })
+    }));
+  };
+
+  const updateElectiveGroupCourse = (yearIdx: number, semIdx: number, groupIdx: number, courseIdx: number, field: string, value: unknown, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: (r.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: g.courses.map((cr, cri) => cri === courseIdx ? { ...cr, [field]: value } : cr) } : g) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: (s.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: g.courses.map((cr, cri) => cri === courseIdx ? { ...cr, [field]: value } : cr) } : g) } : s) };
+      })
+    }));
+  };
+
+  const removeElectiveGroupCourse = (yearIdx: number, semIdx: number, groupIdx: number, courseIdx: number, recessIdx?: number) => {
+    setCurriculum(c => ({
+      ...c,
+      years: c.years.map((y, yi) => {
+        if (yi !== yearIdx) return y;
+        if (recessIdx !== undefined) {
+          return { ...y, recessTerms: y.recessTerms.map((r, ri) => ri === recessIdx ? { ...r, electiveGroups: (r.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: g.courses.filter((_, cri) => cri !== courseIdx) } : g) } : r) };
+        }
+        return { ...y, semesters: y.semesters.map((s, si) => si === semIdx ? { ...s, electiveGroups: (s.electiveGroups || []).map((g, gi) => gi === groupIdx ? { ...g, courses: g.courses.filter((_, cri) => cri !== courseIdx) } : g) } : s) };
+      })
     }));
   };
 
@@ -334,8 +414,16 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   };
 
   const totalCredits = curriculum.years.reduce((sum, y) => {
-    const semCredits = y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0);
-    const recessCredits = (y.recessTerms || []).reduce((s2, rt) => s2 + rt.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0);
+    const semCredits = y.semesters.reduce((s2, sem) => {
+      const courseCredits = sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0);
+      const electiveCredits = (sem.electiveGroups || []).reduce((s4, g) => s4 + g.courses.reduce((s5, cr) => s5 + (cr.credits || 0), 0), 0);
+      return s2 + courseCredits + electiveCredits;
+    }, 0);
+    const recessCredits = (y.recessTerms || []).reduce((s2, rt) => {
+      const courseCredits = rt.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0);
+      const electiveCredits = (rt.electiveGroups || []).reduce((s4, g) => s4 + g.courses.reduce((s5, cr) => s5 + (cr.credits || 0), 0), 0);
+      return s2 + courseCredits + electiveCredits;
+    }, 0);
     return sum + semCredits + recessCredits;
   }, 0);
 
@@ -558,6 +646,32 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                 </div>
                               ))}
                               <Button variant="ghost" size="sm" onClick={() => addCourse(yi, si)} className="ml-4 text-xs"><Plus size={12} className="mr-1" /> Add Course</Button>
+                              {(sem.electiveGroups || []).map((group, gi) => (
+                                <div key={gi} className="ml-4 mt-3 border border-violet-200 bg-violet-50/50 rounded-lg p-3 space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wide">Elective Group</span>
+                                    <Button variant="ghost" size="sm" onClick={() => removeElectiveGroup(yi, si, gi)} className="text-red-500 p-0.5"><X size={11} /></Button>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <Input value={group.groupName} onChange={e => updateElectiveGroupField(yi, si, gi, 'groupName', e.target.value)} placeholder="Group name (e.g. 'CS Electives')" className="text-xs flex-1" />
+                                    <div className="flex items-center gap-1 text-xs">
+                                      <span className="text-[hsl(var(--muted-foreground))]">Choose</span>
+                                      <Input value={group.requiredCount} onChange={e => updateElectiveGroupField(yi, si, gi, 'requiredCount', parseInt(e.target.value) || 1)} type="number" className="w-14 text-xs text-center" min={1} />
+                                      <span className="text-[hsl(var(--muted-foreground))]">from {group.courses.length}</span>
+                                    </div>
+                                  </div>
+                                  {group.courses.map((cr, cri) => (
+                                    <div key={cri} className="flex items-center gap-2 ml-2">
+                                      <Input value={cr.code} onChange={e => updateElectiveGroupCourse(yi, si, gi, cri, 'code', e.target.value)} placeholder="Code" className="w-24 text-xs" />
+                                      <Input value={cr.name} onChange={e => updateElectiveGroupCourse(yi, si, gi, cri, 'name', e.target.value)} placeholder="Course Name" className="flex-1 text-xs" />
+                                      <Input value={cr.credits} onChange={e => updateElectiveGroupCourse(yi, si, gi, cri, 'credits', parseInt(e.target.value) || 0)} type="number" placeholder="Cr" className="w-16 text-xs" />
+                                      <Button variant="ghost" size="sm" onClick={() => removeElectiveGroupCourse(yi, si, gi, cri)} className="text-red-500 p-1"><X size={11} /></Button>
+                                    </div>
+                                  ))}
+                                  <Button variant="ghost" size="sm" onClick={() => addCourseToElectiveGroup(yi, si, gi)} className="ml-2 text-xs text-violet-600"><Plus size={11} className="mr-1" /> Add Option</Button>
+                                </div>
+                              ))}
+                              <Button variant="ghost" size="sm" onClick={() => addElectiveGroup(yi, si)} className="ml-4 text-xs text-violet-600 hover:text-violet-700"><Plus size={12} className="mr-1" /> Add Elective Group</Button>
                             </div>
                           ))}
                           {(year.recessTerms || []).map((rt, ri) => (
@@ -578,6 +692,32 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                 </div>
                               ))}
                               <Button variant="ghost" size="sm" onClick={() => addCourse(yi, 0, ri)} className="ml-4 text-xs"><Plus size={12} className="mr-1" /> Add Course</Button>
+                              {(rt.electiveGroups || []).map((group, gi) => (
+                                <div key={gi} className="ml-4 mt-3 border border-violet-200 bg-violet-50/50 rounded-lg p-3 space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-violet-600 uppercase tracking-wide">Elective Group</span>
+                                    <Button variant="ghost" size="sm" onClick={() => removeElectiveGroup(yi, 0, gi, ri)} className="text-red-500 p-0.5"><X size={11} /></Button>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <Input value={group.groupName} onChange={e => updateElectiveGroupField(yi, 0, gi, 'groupName', e.target.value, ri)} placeholder="Group name (e.g. 'CS Electives')" className="text-xs flex-1" />
+                                    <div className="flex items-center gap-1 text-xs">
+                                      <span className="text-[hsl(var(--muted-foreground))]">Choose</span>
+                                      <Input value={group.requiredCount} onChange={e => updateElectiveGroupField(yi, 0, gi, 'requiredCount', parseInt(e.target.value) || 1, ri)} type="number" className="w-14 text-xs text-center" min={1} />
+                                      <span className="text-[hsl(var(--muted-foreground))]">from {group.courses.length}</span>
+                                    </div>
+                                  </div>
+                                  {group.courses.map((cr, cri) => (
+                                    <div key={cri} className="flex items-center gap-2 ml-2">
+                                      <Input value={cr.code} onChange={e => updateElectiveGroupCourse(yi, 0, gi, cri, 'code', e.target.value, ri)} placeholder="Code" className="w-24 text-xs" />
+                                      <Input value={cr.name} onChange={e => updateElectiveGroupCourse(yi, 0, gi, cri, 'name', e.target.value, ri)} placeholder="Course Name" className="flex-1 text-xs" />
+                                      <Input value={cr.credits} onChange={e => updateElectiveGroupCourse(yi, 0, gi, cri, 'credits', parseInt(e.target.value) || 0, ri)} type="number" placeholder="Cr" className="w-16 text-xs" />
+                                      <Button variant="ghost" size="sm" onClick={() => removeElectiveGroupCourse(yi, 0, gi, cri, ri)} className="text-red-500 p-1"><X size={11} /></Button>
+                                    </div>
+                                  ))}
+                                  <Button variant="ghost" size="sm" onClick={() => addCourseToElectiveGroup(yi, 0, gi, ri)} className="ml-2 text-xs text-violet-600"><Plus size={11} className="mr-1" /> Add Option</Button>
+                                </div>
+                              ))}
+                              <Button variant="ghost" size="sm" onClick={() => addElectiveGroup(yi, 0, ri)} className="ml-4 text-xs text-violet-600 hover:text-violet-700"><Plus size={12} className="mr-1" /> Add Elective Group</Button>
                             </div>
                           ))}
                           <Button variant="ghost" size="sm" onClick={() => addRecessTerm(yi)} className="ml-4 text-xs text-amber-600 hover:text-amber-700"><Plus size={12} className="mr-1" /> Add Recess Term</Button>
