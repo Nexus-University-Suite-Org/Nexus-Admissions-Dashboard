@@ -194,7 +194,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     displayOrder: program?.displayOrder || 0,
   });
 
-  const [fees, setFees] = useState(() => parseJson(program?.fees, { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0, currency: 'UGX', fee_structure: {} as Record<string, Record<string, number>> }));
+  const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
   const [admissionReq, setAdmissionReq] = useState(() => parseJson(program?.admissionRequirements, { min_qualification: '', min_grade: '', required_subjects: '', min_points: '', direct_entry: '', diploma_entry: '', mature_age_entry: '', international: '', other: '' }));
   const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }));
   const [intakesList, setIntakesList] = useState(() => parseJson(program?.intakes, [] as { name: string; month: string; academic_year: string; app_open: string; app_close: string; admission_start: string; max_students: number; status: string }[]));
@@ -270,7 +270,32 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     { key: 'documents', label: 'Documents' }, { key: 'presentation', label: 'Presentation' },
   ] as const;
 
-  const totalCredits = curriculum.years.reduce((sum, y) => y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0), sum);
+  const totalCredits = curriculum.years.reduce((sum, y) => sum + y.semesters.reduce((s2, sem) => s2 + sem.courses.reduce((s3, cr) => s3 + (cr.credits || 0), 0), 0), 0);
+
+  const semesterFeeSum = (s: { tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number }) => s.tuition + s.registration + s.examination + s.functional + s.ict + s.library + s.medical + s.accommodation + s.other;
+
+  const syncFeesToCurriculum = () => {
+    setFees(f => {
+      const existing = new Map<string, typeof f.year_fees[0]['semesters'][0]>();
+      for (const yf of f.year_fees) for (const s of yf.semesters) existing.set(`${yf.year}-${s.semester}`, s);
+      const year_fees = curriculum.years.map(y => ({
+        year: y.year,
+        semesters: y.semesters.map(sem => {
+          const key = `${y.year}-${sem.semester}`;
+          const prev = existing.get(key) || { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0 };
+          const total = semesterFeeSum(prev);
+          return { ...prev, total };
+        })
+      }));
+      return { ...f, year_fees };
+    });
+  };
+
+  const initFeesFromCurriculum = () => {
+    if (fees.year_fees.length === 0 && curriculum.years.length > 0) syncFeesToCurriculum();
+  };
+
+  const totalProgramFees = fees.year_fees.reduce((sum, yf) => sum + yf.semesters.reduce((s2, sem) => s2 + (sem.total || 0), 0), 0);
 
   const handleSubmit = () => {
     saveMutation.mutate({ ...form, totalCreditUnits: totalCredits, fees, admissionRequirements: admissionReq, curriculum, intakes: intakesList, accreditation, documents: documentsList });
@@ -345,27 +370,63 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
         )}
         {section === 'fees' && (
           <>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Tuition Fee" value={fees.tuition} onChange={v => setFees(f => ({ ...f, tuition: parseFloat(v) || 0, total: (parseFloat(v) || 0) + f.registration + f.examination + f.functional + f.ict + f.library + f.medical + f.accommodation + f.other }))} type="number" />
-              <Field label="Registration Fee" value={fees.registration} onChange={v => setFees(f => ({ ...f, registration: parseFloat(v) || 0 }))} type="number" />
-              <Field label="Examination Fee" value={fees.examination} onChange={v => setFees(f => ({ ...f, examination: parseFloat(v) || 0 }))} type="number" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Functional Fee" value={fees.functional} onChange={v => setFees(f => ({ ...f, functional: parseFloat(v) || 0 }))} type="number" />
-              <Field label="ICT / Technology Fee" value={fees.ict} onChange={v => setFees(f => ({ ...f, ict: parseFloat(v) || 0 }))} type="number" />
-              <Field label="Library Fee" value={fees.library} onChange={v => setFees(f => ({ ...f, library: parseFloat(v) || 0 }))} type="number" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <Field label="Medical Fee" value={fees.medical} onChange={v => setFees(f => ({ ...f, medical: parseFloat(v) || 0 }))} type="number" />
-              <Field label="Accommodation Fee" value={fees.accommodation} onChange={v => setFees(f => ({ ...f, accommodation: parseFloat(v) || 0 }))} type="number" />
-              <Field label="Other Fees" value={fees.other} onChange={v => setFees(f => ({ ...f, other: parseFloat(v) || 0 }))} type="number" />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+            <p className="text-xs text-[hsl(var(--muted-foreground))] -mt-2 mb-2">Set fees per semester. Totals auto-calculate.</p>
+            <div className="flex items-center gap-4 mb-4">
               <Field label="Currency" value={fees.currency} onChange={v => setFees(f => ({ ...f, currency: v }))} />
-              <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-4 py-3">
-                <span className="text-xs text-[hsl(var(--muted-foreground))]">Total Fee</span>
-                <p className="text-lg font-bold">{fees.currency} {fees.total.toLocaleString()}</p>
+              {curriculum.years.length > 0 && fees.year_fees.length === 0 && (
+                <Button variant="outline" size="sm" onClick={initFeesFromCurriculum} className="mt-5">Sync from Curriculum</Button>
+              )}
+              {curriculum.years.length > 0 && fees.year_fees.length > 0 && (
+                <Button variant="outline" size="sm" onClick={syncFeesToCurriculum} className="mt-5">Resync from Curriculum</Button>
+              )}
+            </div>
+            {fees.year_fees.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-8 text-center">
+                <p className="text-sm text-[hsl(var(--muted-foreground))]">No fee structure yet. Add curriculum years first, then click "Sync from Curriculum".</p>
               </div>
+            ) : (
+              <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
+                {fees.year_fees.map((yf, yi) => (
+                  <div key={yi} className="border border-[hsl(var(--border))] rounded-xl p-4 space-y-4">
+                    <h4 className="text-sm font-semibold flex items-center gap-2"><BookOpen size={14} /> Year {yf.year}</h4>
+                    {yf.semesters.map((sem, si) => {
+                      const update = (field: string, val: number) => {
+                        setFees(f => {
+                          const next = { ...f, year_fees: f.year_fees.map((y, j) => j === yi ? { ...y, semesters: y.semesters.map((s, k) => k === si ? { ...s, [field]: val, total: semesterFeeSum({ ...s, [field]: val }) } : s) } : y) };
+                          return next;
+                        });
+                      };
+                      return (
+                        <div key={si} className="ml-4 border border-[hsl(var(--border)/.5)] rounded-lg p-3 space-y-2">
+                          <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Semester {sem.semester}</p>
+                          <div className="grid grid-cols-3 gap-3">
+                            <Field label="Tuition" value={sem.tuition} onChange={v => update('tuition', parseFloat(v) || 0)} type="number" />
+                            <Field label="Registration" value={sem.registration} onChange={v => update('registration', parseFloat(v) || 0)} type="number" />
+                            <Field label="Examination" value={sem.examination} onChange={v => update('examination', parseFloat(v) || 0)} type="number" />
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <Field label="Functional" value={sem.functional} onChange={v => update('functional', parseFloat(v) || 0)} type="number" />
+                            <Field label="ICT / Technology" value={sem.ict} onChange={v => update('ict', parseFloat(v) || 0)} type="number" />
+                            <Field label="Library" value={sem.library} onChange={v => update('library', parseFloat(v) || 0)} type="number" />
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <Field label="Medical" value={sem.medical} onChange={v => update('medical', parseFloat(v) || 0)} type="number" />
+                            <Field label="Accommodation" value={sem.accommodation} onChange={v => update('accommodation', parseFloat(v) || 0)} type="number" />
+                            <Field label="Other" value={sem.other} onChange={v => update('other', parseFloat(v) || 0)} type="number" />
+                          </div>
+                          <div className="rounded-lg bg-[hsl(var(--muted)/.3)] px-3 py-2 text-xs font-bold">
+                            Semester Total: {fees.currency} {sem.total.toLocaleString()}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="rounded-xl border border-[hsl(var(--primary)/.3)] bg-[hsl(var(--primary)/.05)] px-4 py-3 mt-4">
+              <span className="text-xs text-[hsl(var(--muted-foreground))]">Total Program Fees</span>
+              <p className="text-lg font-bold">{fees.currency} {totalProgramFees.toLocaleString()}</p>
             </div>
           </>
         )}
