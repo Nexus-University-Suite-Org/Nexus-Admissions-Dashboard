@@ -567,9 +567,13 @@ function SiteSettingsPage() {
   const [newsFeaturedExcerpt, setNewsFeaturedExcerpt] = useState('');
   const [newsArticles, setNewsArticles] = useState<Array<{ category: string; title: string; excerpt: string }>>([]);
   const [settingEvents, setSettingEvents] = useState<Array<{ title: string; date: string; type: string }>>([]);
+  const [progHeroTagline, setProgHeroTagline] = useState('');
+  const [progHeroHeading1, setProgHeroHeading1] = useState('');
+  const [progHeroHeading2, setProgHeroHeading2] = useState('');
+  const [progHeroDescription, setProgHeroDescription] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -629,6 +633,10 @@ function SiteSettingsPage() {
       setNewsFeaturedExcerpt(getSetting('news_featured_excerpt'));
       try { setNewsArticles(JSON.parse(getSetting('news_articles'))); } catch { setNewsArticles([]); }
       try { setSettingEvents(JSON.parse(getSetting('news_events'))); } catch { setSettingEvents([]); }
+      setProgHeroTagline(getSetting('programs_hero_tagline'));
+      setProgHeroHeading1(getSetting('programs_hero_heading_1'));
+      setProgHeroHeading2(getSetting('programs_hero_heading_2'));
+      setProgHeroDescription(getSetting('programs_hero_description'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -658,6 +666,7 @@ function SiteSettingsPage() {
           { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
           { key: 'about' as const, label: 'About', desc: 'About page content' },
           { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
+          { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -1335,6 +1344,55 @@ function SiteSettingsPage() {
             <Button className="mt-4" onClick={() => save('news_events', JSON.stringify(settingEvents))} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Events'}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PROGRAMS TAB ═══════════════════ */}
+      {activeTab === 'programs' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Programs page — "What We Teach".</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroTagline} onChange={(e) => setProgHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
+                  <Button onClick={() => save('programs_hero_tagline', progHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroHeading1} onChange={(e) => setProgHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Vocational Programs" />
+                  <Button onClick={() => save('programs_hero_heading_1', progHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroHeading2} onChange={(e) => setProgHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. That Build Real Futures" />
+                  <Button onClick={() => save('programs_hero_heading_2', progHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={progHeroDescription} onChange={(e) => setProgHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. 8 practical programs. Market-driven curricula..." />
+                  <Button onClick={() => save('programs_hero_description', progHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
