@@ -58,6 +58,7 @@ import {
 } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -513,6 +514,25 @@ function SiteSettingsPage() {
   const getSetting = (key: string) => settings.find((s) => s.settingKey === key)?.settingValue || '';
 
   const [portalName, setPortalName] = useState('');
+  const [aboutStoryLabel, setAboutStoryLabel] = useState('');
+  const [aboutStoryHeading1, setAboutStoryHeading1] = useState('');
+  const [aboutStoryHeading2, setAboutStoryHeading2] = useState('');
+  const [aboutStoryParagraph, setAboutStoryParagraph] = useState('');
+  const [aboutFoundingLabel, setAboutFoundingLabel] = useState('');
+  const [aboutFoundingHeading, setAboutFoundingHeading] = useState('');
+  const [aboutFoundingStory, setAboutFoundingStory] = useState('');
+  const [aboutMissionLabel, setAboutMissionLabel] = useState('');
+  const [aboutMissionText, setAboutMissionText] = useState('');
+  const [aboutVisionLabel, setAboutVisionLabel] = useState('');
+  const [aboutVisionText, setAboutVisionText] = useState('');
+  const [aboutValuesLabel, setAboutValuesLabel] = useState('');
+  const [aboutValuesHeading, setAboutValuesHeading] = useState('');
+  const [aboutProgramsBtn, setAboutProgramsBtn] = useState('');
+  const [aboutValues, setAboutValues] = useState<Array<{ title: string; desc: string }>>([]);
+  const [aboutCtaLabel, setAboutCtaLabel] = useState('');
+  const [aboutCtaHeading, setAboutCtaHeading] = useState('');
+  const [aboutCtaDonateBtn, setAboutCtaDonateBtn] = useState('');
+  const [aboutCtaPartnerBtn, setAboutCtaPartnerBtn] = useState('');
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
   const [heroTagline, setHeroTagline] = useState('');
@@ -597,6 +617,25 @@ function SiteSettingsPage() {
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
       setPortalName(getSetting('portal_name'));
+      setAboutStoryLabel(getSetting('about_story_label'));
+      setAboutStoryHeading1(getSetting('about_story_heading_1'));
+      setAboutStoryHeading2(getSetting('about_story_heading_2'));
+      setAboutStoryParagraph(getSetting('about_story_paragraph'));
+      setAboutFoundingLabel(getSetting('about_founding_label'));
+      setAboutFoundingHeading(getSetting('about_founding_heading'));
+      setAboutFoundingStory(getSetting('about_founding_story'));
+      setAboutMissionLabel(getSetting('about_mission_label'));
+      setAboutMissionText(getSetting('about_mission_text'));
+      setAboutVisionLabel(getSetting('about_vision_label'));
+      setAboutVisionText(getSetting('about_vision_text'));
+      setAboutValuesLabel(getSetting('about_values_label'));
+      setAboutValuesHeading(getSetting('about_values_heading'));
+      setAboutProgramsBtn(getSetting('about_programs_btn'));
+      try { setAboutValues(JSON.parse(getSetting('about_values'))); } catch { setAboutValues([]); }
+      setAboutCtaLabel(getSetting('about_cta_label'));
+      setAboutCtaHeading(getSetting('about_cta_heading'));
+      setAboutCtaDonateBtn(getSetting('about_cta_donate_btn'));
+      setAboutCtaPartnerBtn(getSetting('about_cta_partner_btn'));
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
       setHeroTagline(getSetting('hero_tagline'));
@@ -1199,12 +1238,131 @@ function SiteSettingsPage() {
       {/* ═══════════════════ ABOUT TAB ═══════════════════ */}
       {activeTab === 'about' && (
         <div className="space-y-8 pt-4">
+          {/* About Section */}
           <div className="nexus-card rounded-2xl border p-6">
-            <h2 className="nexus-serif text-lg font-semibold mb-1">About Page</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Content for the About page — history, mission, team, and values.</p>
-            <div className="flex items-center gap-3 py-8 justify-center text-[hsl(var(--muted-foreground))]">
-              <BookOpen size={18} />
-              <span className="text-sm">Coming soon — About page settings will appear here.</span>
+            <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Edit content shown on the public About page.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Section Label</label>
+                <Input value={aboutStoryLabel} onChange={(e) => setAboutStoryLabel(e.target.value)} placeholder="e.g. Our Story" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 1</label>
+                <Input value={aboutStoryHeading1} onChange={(e) => setAboutStoryHeading1(e.target.value)} placeholder="e.g. Built on Hope," />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Heading — Line 2</label>
+                <Input value={aboutStoryHeading2} onChange={(e) => setAboutStoryHeading2(e.target.value)} placeholder="e.g. Powered by Purpose" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Hero Paragraph</label>
+                <Textarea value={aboutStoryParagraph} onChange={(e) => setAboutStoryParagraph(e.target.value)} rows={4} placeholder="The paragraph shown beneath the hero heading." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Section Label</label>
+                <Input value={aboutFoundingLabel} onChange={(e) => setAboutFoundingLabel(e.target.value)} placeholder="e.g. Our Founding Story" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Heading</label>
+                <Input value={aboutFoundingHeading} onChange={(e) => setAboutFoundingHeading(e.target.value)} placeholder="e.g. Why We Started" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Founding Story</label>
+                <Textarea value={aboutFoundingStory} onChange={(e) => setAboutFoundingStory(e.target.value)} rows={10} placeholder="The full founding story. Separate paragraphs with a blank line." />
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Use a blank line between paragraphs. Each paragraph will be rendered as its own block on the page.</p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Mission Label</label>
+                <Input value={aboutMissionLabel} onChange={(e) => setAboutMissionLabel(e.target.value)} placeholder="e.g. Our Mission" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Mission Statement</label>
+                <Textarea value={aboutMissionText} onChange={(e) => setAboutMissionText(e.target.value)} rows={3} placeholder="The mission statement text." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Vision Label</label>
+                <Input value={aboutVisionLabel} onChange={(e) => setAboutVisionLabel(e.target.value)} placeholder="e.g. Our Vision" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Vision Statement</label>
+                <Textarea value={aboutVisionText} onChange={(e) => setAboutVisionText(e.target.value)} rows={3} placeholder="The vision statement text." />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Values Section Label</label>
+                <Input value={aboutValuesLabel} onChange={(e) => setAboutValuesLabel(e.target.value)} placeholder="e.g. What We Stand For" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Values Heading</label>
+                <Input value={aboutValuesHeading} onChange={(e) => setAboutValuesHeading(e.target.value)} placeholder="e.g. Our Core Values" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Programs Button Text</label>
+                <Input value={aboutProgramsBtn} onChange={(e) => setAboutProgramsBtn(e.target.value)} placeholder="e.g. See Our Programs" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">Core Value Cards</label>
+                <div className="space-y-3">
+                  {aboutValues.map((val, i) => (
+                    <div key={i} className="rounded-lg border p-3">
+                      <div className="grid grid-cols-[1fr_auto] gap-3 mb-2">
+                        <Input value={val.title} onChange={(e) => { const next = [...aboutValues]; next[i] = { ...next[i], title: e.target.value }; setAboutValues(next); }} placeholder="Value title" />
+                        <button onClick={() => setAboutValues(aboutValues.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs self-center">Remove</button>
+                      </div>
+                      <Textarea value={val.desc} onChange={(e) => { const next = [...aboutValues]; next[i] = { ...next[i], desc: e.target.value }; setAboutValues(next); }} rows={2} placeholder="Value description" />
+                    </div>
+                  ))}
+                </div>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setAboutValues([...aboutValues, { title: 'New Value', desc: '' }])}>
+                  + Add Value
+                </Button>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">CTA Section Label</label>
+                <Input value={aboutCtaLabel} onChange={(e) => setAboutCtaLabel(e.target.value)} placeholder="e.g. Join Our Mission" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">CTA Heading</label>
+                <Input value={aboutCtaHeading} onChange={(e) => setAboutCtaHeading(e.target.value)} placeholder="e.g. Be Part of the Change" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">CTA Donate Button</label>
+                <Input value={aboutCtaDonateBtn} onChange={(e) => setAboutCtaDonateBtn(e.target.value)} placeholder="e.g. Donate Now" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wide mb-2">CTA Partner Button</label>
+                <Input value={aboutCtaPartnerBtn} onChange={(e) => setAboutCtaPartnerBtn(e.target.value)} placeholder="e.g. Partner With Us" />
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <Button
+                onClick={async () => {
+                  await save('about_story_label', aboutStoryLabel);
+                  await save('about_story_heading_1', aboutStoryHeading1);
+                  await save('about_story_heading_2', aboutStoryHeading2);
+                  await save('about_story_paragraph', aboutStoryParagraph);
+                  await save('about_founding_label', aboutFoundingLabel);
+                  await save('about_founding_heading', aboutFoundingHeading);
+                  await save('about_founding_story', aboutFoundingStory);
+                  await save('about_mission_label', aboutMissionLabel);
+                  await save('about_mission_text', aboutMissionText);
+                  await save('about_vision_label', aboutVisionLabel);
+                  await save('about_vision_text', aboutVisionText);
+                  await save('about_values_label', aboutValuesLabel);
+                  await save('about_values_heading', aboutValuesHeading);
+                  await save('about_programs_btn', aboutProgramsBtn);
+                  await save('about_values', JSON.stringify(aboutValues));
+                  await save('about_cta_label', aboutCtaLabel);
+                  await save('about_cta_heading', aboutCtaHeading);
+                  await save('about_cta_donate_btn', aboutCtaDonateBtn);
+                  await save('about_cta_partner_btn', aboutCtaPartnerBtn);
+                }}
+                disabled={updateMutation.isPending}
+              >
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Changes'}
+              </Button>
             </div>
           </div>
         </div>
