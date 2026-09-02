@@ -161,7 +161,7 @@ export default function ProgramsPage() {
                   {p.fees && (() => {
                     const fees = parseJson(p.fees, {} as Record<string, unknown>);
                     return fees.total ? (
-                      <div className="text-xs"><span className="text-[hsl(var(--muted-foreground))]">Total Fee:</span> <span className="font-semibold">{fees.currency || ''} {String(fees.total)}</span></div>
+                      <div className="text-xs"><span className="text-[hsl(var(--muted-foreground))]">Total Fee:</span> <span className="font-semibold">{String(fees.currency ?? '')} {String(fees.total)}</span></div>
                     ) : null;
                   })()}
                 </div>
@@ -492,7 +492,7 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', requir
   return (
     <div>
       <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && ' *'}</label>
-      <Input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
+      <Input type={type} value={value == null ? '' : String(value)} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
     </div>
   );
 }
