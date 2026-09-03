@@ -785,9 +785,36 @@ function SiteSettingsPage() {
   const [partnersCtaHeading1, setPartnersCtaHeading1] = useState('');
   const [partnersCtaHeading2, setPartnersCtaHeading2] = useState('');
   const [partnersCtaDescription, setPartnersCtaDescription] = useState('');
+  const [donateHeroTagline, setDonateHeroTagline] = useState('');
+  const [donateHeroHeading1, setDonateHeroHeading1] = useState('');
+  const [donateHeroHeading2, setDonateHeroHeading2] = useState('');
+  const [donateHeroDescription, setDonateHeroDescription] = useState('');
+  const [donateTiersTagline, setDonateTiersTagline] = useState('');
+  const [donateTiersHeading, setDonateTiersHeading] = useState('');
+  const [donateTiersDescription, setDonateTiersDescription] = useState('');
+  const [donateSponsorTagline, setDonateSponsorTagline] = useState('');
+  const [donateSponsorHeading, setDonateSponsorHeading] = useState('');
+  const [donateSponsorDescription, setDonateSponsorDescription] = useState('');
+  const [donateSponsorBenefits, setDonateSponsorBenefits] = useState<string[]>([]);
+  const [donateSponsorBtnText, setDonateSponsorBtnText] = useState('');
+  const [donateSponsorBtnVisible, setDonateSponsorBtnVisible] = useState(true);
+  const [donateFaqTagline, setDonateFaqTagline] = useState('');
+  const [donateFaqHeading, setDonateFaqHeading] = useState('');
+  const [donateFaqs, setDonateFaqs] = useState<Array<{ q: string; a: string }>>([]);
+  const [donatePageTiers, setDonatePageTiers] = useState<Array<{ amount: string; usd: number; label: string; description: string; impact: string; featured?: boolean }>>([]);
+  const [donateStatAmount, setDonateStatAmount] = useState('');
+  const [donateStatPeriod, setDonateStatPeriod] = useState('');
+  const [donateStatText, setDonateStatText] = useState('');
+  const [donateStatProgress, setDonateStatProgress] = useState('');
+  const [donateStatProgressText, setDonateStatProgressText] = useState('');
+  const [donateStatVisible, setDonateStatVisible] = useState(true);
+  const [donateNeedLabel, setDonateNeedLabel] = useState('');
+  const [donateNeedHeading, setDonateNeedHeading] = useState('');
+  const [donateNeedText, setDonateNeedText] = useState('');
+  const [donateNeedVisible, setDonateNeedVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -929,6 +956,33 @@ function SiteSettingsPage() {
       setPartnersCtaHeading1(getSetting('partners_cta_heading_1'));
       setPartnersCtaHeading2(getSetting('partners_cta_heading_2'));
       setPartnersCtaDescription(getSetting('partners_cta_description'));
+      setDonateHeroTagline(getSetting('donate_hero_tagline'));
+      setDonateHeroHeading1(getSetting('donate_hero_heading_1'));
+      setDonateHeroHeading2(getSetting('donate_hero_heading_2'));
+      setDonateHeroDescription(getSetting('donate_hero_description'));
+      setDonateTiersTagline(getSetting('donate_tiers_tagline'));
+      setDonateTiersHeading(getSetting('donate_tiers_heading'));
+      setDonateTiersDescription(getSetting('donate_tiers_description'));
+      setDonateSponsorTagline(getSetting('donate_sponsor_tagline'));
+      setDonateSponsorHeading(getSetting('donate_sponsor_heading'));
+      setDonateSponsorDescription(getSetting('donate_sponsor_description'));
+      try { setDonateSponsorBenefits(JSON.parse(getSetting('donate_sponsor_benefits'))); } catch { setDonateSponsorBenefits([]); }
+      setDonateSponsorBtnText(getSetting('donate_sponsor_btn_text'));
+      setDonateSponsorBtnVisible(getSetting('donate_sponsor_btn_visible') !== 'false');
+      setDonateFaqTagline(getSetting('donate_faq_tagline'));
+      setDonateFaqHeading(getSetting('donate_faq_heading'));
+      try { setDonateFaqs(JSON.parse(getSetting('donate_faqs'))); } catch { setDonateFaqs([]); }
+      try { setDonatePageTiers(JSON.parse(getSetting('donate_page_tiers') || '[]')); } catch { setDonatePageTiers([]); }
+      setDonateStatAmount(getSetting('donate_stat_amount'));
+      setDonateStatPeriod(getSetting('donate_stat_period'));
+      setDonateStatText(getSetting('donate_stat_text'));
+      setDonateStatProgress(getSetting('donate_stat_progress'));
+      setDonateStatProgressText(getSetting('donate_stat_progress_text'));
+      setDonateStatVisible(getSetting('donate_stat_visible') !== 'false');
+      setDonateNeedLabel(getSetting('donate_need_label'));
+      setDonateNeedHeading(getSetting('donate_need_heading'));
+      setDonateNeedText(getSetting('donate_need_text'));
+      setDonateNeedVisible(getSetting('donate_need_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -965,6 +1019,7 @@ function SiteSettingsPage() {
           { key: 'gallery' as const, label: 'Gallery', desc: 'Photo gallery page hero & content' },
           { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats & content' },
           { key: 'partners' as const, label: 'Partners', desc: 'Partners page hero, ways to partner & CTA' },
+          { key: 'donate' as const, label: 'Donate', desc: 'Donate page hero & content' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -2707,6 +2762,302 @@ function SiteSettingsPage() {
             <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Partners</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove partner organisations displayed on the Partners page.</p>
             <PartnersManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ DONATE TAB ═══════════════════ */}
+      {activeTab === 'donate' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Donate page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroTagline} onChange={(e) => setDonateHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
+                  <Button onClick={() => save('donate_hero_tagline', donateHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroHeading1} onChange={(e) => setDonateHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Gift Builds" />
+                  <Button onClick={() => save('donate_hero_heading_1', donateHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroHeading2} onChange={(e) => setDonateHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Better Tomorrow" />
+                  <Button onClick={() => save('donate_hero_heading_2', donateHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateHeroDescription} onChange={(e) => setDonateHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. One donation. One student. One family lifted out of poverty..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_hero_description', donateHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tiers Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Tiers Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the donation tier cards.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateTiersTagline} onChange={(e) => setDonateTiersTagline(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Level" />
+                  <Button onClick={() => save('donate_tiers_tagline', donateTiersTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateTiersHeading} onChange={(e) => setDonateTiersHeading(e.target.value)} className="max-w-md" placeholder="e.g. Every Amount Makes an Impact" />
+                  <Button onClick={() => save('donate_tiers_heading', donateTiersHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateTiersDescription} onChange={(e) => setDonateTiersDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. All donations go directly to student training, materials, and support..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_tiers_description', donateTiersDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Donation Tiers */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Donation Tier Cards</h2>
+              <Button variant="outline" size="sm" onClick={() => setDonatePageTiers([...donatePageTiers, { amount: '', usd: 50, label: '', description: '', impact: '', featured: false }])}>
+                + Add Tier
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation amount cards with label, description and impact.</p>
+            <div className="space-y-3">
+              {donatePageTiers.map((tier, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-3 space-y-2">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <Input value={tier.amount} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], amount: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. $10" />
+                    <Input type="number" value={tier.usd} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], usd: Number(e.target.value) }; setDonatePageTiers(next); }} placeholder="e.g. 10" />
+                    <button onClick={() => setDonatePageTiers(donatePageTiers.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <Input value={tier.label} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], label: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Learning Materials" />
+                  <Input value={tier.description} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], description: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Provides one student with notebooks, pens..." />
+                  <Input value={tier.impact} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], impact: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Learning materials for 1 student" />
+                  <label className="flex items-center gap-2 text-xs font-medium text-[hsl(var(--muted-foreground))] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!tier.featured}
+                      onChange={(e) => { const next = donatePageTiers.map((t, j) => ({ ...t, featured: j === i ? e.target.checked : false })); setDonatePageTiers(next); }}
+                    />
+                    Mark as Most Popular (only one)
+                  </label>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('donate_page_tiers', JSON.stringify(donatePageTiers))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
+            </Button>
+          </div>
+
+          {/* Sponsor a Student Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Sponsor a Student Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Personal Impact" section that promotes student sponsorship.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateSponsorTagline} onChange={(e) => setDonateSponsorTagline(e.target.value)} className="max-w-md" placeholder="e.g. Personal Impact" />
+                  <Button onClick={() => save('donate_sponsor_tagline', donateSponsorTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateSponsorHeading} onChange={(e) => setDonateSponsorHeading(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student Directly" />
+                  <Button onClick={() => save('donate_sponsor_heading', donateSponsorHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateSponsorDescription} onChange={(e) => setDonateSponsorDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. Through our Sponsor a Student program, you are matched with a specific student..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_sponsor_description', donateSponsorDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Benefits (one per line)</label>
+                <textarea value={donateSponsorBenefits.join('\n')} onChange={(e) => setDonateSponsorBenefits(e.target.value.split('\n').filter(Boolean))} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[100px]" placeholder="e.g. A profile and story of the student you're supporting" />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_sponsor_benefits', JSON.stringify(donateSponsorBenefits))} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Benefits'}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1 max-w-md">
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button Text</label>
+                  <Input value={donateSponsorBtnText} onChange={(e) => setDonateSponsorBtnText(e.target.value)} placeholder="e.g. Start Sponsoring" />
+                </div>
+                <Button onClick={() => save('donate_sponsor_btn_text', donateSponsorBtnText)} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                </Button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Show button</span>
+                <button onClick={() => { setDonateSponsorBtnVisible(!donateSponsorBtnVisible); save('donate_sponsor_btn_visible', String(!donateSponsorBtnVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateSponsorBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                  {donateSponsorBtnVisible ? 'Visible' : 'Hidden'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Sponsor Stats */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Sponsor Stats</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The two cards beside the "Sponsor a Student" section.</p>
+            <div className="space-y-4">
+              <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Monthly Sponsorship Banner</span>
+                  <button onClick={() => { setDonateStatVisible(!donateStatVisible); save('donate_stat_visible', String(!donateStatVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateStatVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {donateStatVisible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Amount</label>
+                    <Input value={donateStatAmount} onChange={(e) => setDonateStatAmount(e.target.value)} placeholder="e.g. $50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Period</label>
+                    <Input value={donateStatPeriod} onChange={(e) => setDonateStatPeriod(e.target.value)} placeholder="e.g. /month" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text</label>
+                  <Input value={donateStatText} onChange={(e) => setDonateStatText(e.target.value)} placeholder="e.g. Sponsors one student for a month" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Fill %</label>
+                    <Input value={donateStatProgress} onChange={(e) => setDonateStatProgress(e.target.value)} placeholder="e.g. 68" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Progress text</label>
+                    <Input value={donateStatProgressText} onChange={(e) => setDonateStatProgressText(e.target.value)} placeholder="e.g. 68% of monthly spots filled" />
+                  </div>
+                </div>
+                <div className="pt-1">
+                  <Button onClick={() => { save('donate_stat_amount', donateStatAmount); save('donate_stat_period', donateStatPeriod); save('donate_stat_text', donateStatText); save('donate_stat_progress', donateStatProgress); save('donate_stat_progress_text', donateStatProgressText); }} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Current Need Banner</span>
+                  <button onClick={() => { setDonateNeedVisible(!donateNeedVisible); save('donate_need_visible', String(!donateNeedVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateNeedVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {donateNeedVisible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Label</label>
+                  <Input value={donateNeedLabel} onChange={(e) => setDonateNeedLabel(e.target.value)} placeholder="e.g. Current Need" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                  <Input value={donateNeedHeading} onChange={(e) => setDonateNeedHeading(e.target.value)} placeholder="e.g. 47 students awaiting sponsorship" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text</label>
+                  <textarea value={donateNeedText} onChange={(e) => setDonateNeedText(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. These students are enrolled and ready to start..." />
+                </div>
+                <div className="pt-1">
+                  <Button onClick={() => { save('donate_need_label', donateNeedLabel); save('donate_need_heading', donateNeedHeading); save('donate_need_text', donateNeedText); }} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* FAQ Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">FAQ Section</h2>
+              <Button variant="outline" size="sm" onClick={() => setDonateFaqs([...donateFaqs, { q: '', a: '' }])}>
+                + Add Question
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Admin sets the questions and answers shown on the Donate page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateFaqTagline} onChange={(e) => setDonateFaqTagline(e.target.value)} className="max-w-md" placeholder="e.g. Questions" />
+                  <Button onClick={() => save('donate_faq_tagline', donateFaqTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateFaqHeading} onChange={(e) => setDonateFaqHeading(e.target.value)} className="max-w-md" placeholder="e.g. Frequently Asked Questions" />
+                  <Button onClick={() => save('donate_faq_heading', donateFaqHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {donateFaqs.map((faq, i) => (
+                  <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Question {i + 1}</span>
+                      <button onClick={() => setDonateFaqs(donateFaqs.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                    </div>
+                    <Input value={faq.q} onChange={(e) => { const next = [...donateFaqs]; next[i] = { ...next[i], q: e.target.value }; setDonateFaqs(next); }} placeholder="e.g. How is my donation used?" />
+                    <textarea value={faq.a} onChange={(e) => { const next = [...donateFaqs]; next[i] = { ...next[i], a: e.target.value }; setDonateFaqs(next); }} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. 100% of your donation goes directly to student training..." />
+                  </div>
+                ))}
+              </div>
+              <Button className="mt-4" onClick={() => save('donate_faqs', JSON.stringify(donateFaqs))} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save FAQs'}
+              </Button>
+            </div>
           </div>
         </div>
       )}
