@@ -514,9 +514,11 @@ function SubjectTable({ label, json }: { label: string; json?: string | null }) 
 
 function HeroImageField({ label, hint, value, onChange, onSave, saving }: { label: string; hint?: string; value: string; onChange: (url: string) => void; onSave: (url: string) => void; saving: boolean }) {
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
   const upload = async (file: File) => {
     if (!file) return;
     setUploading(true);
+    setError('');
     const formData = new FormData();
     formData.append('file', file);
     try {
@@ -524,9 +526,14 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
       if (res.ok) {
         const data = await res.json();
         const url = data.url || data.fileUrl || '';
-        if (url) onChange(url);
+        if (url) { onChange(url); setError(''); }
+        else { setError('Upload succeeded but returned no image URL.'); }
+      } else {
+        setError(`Upload failed (HTTP ${res.status}).`);
       }
-    } catch {} finally { setUploading(false); }
+    } catch {
+      setError('Could not reach the upload server. Please try again.');
+    } finally { setUploading(false); }
   };
   return <div>
     <div className="flex items-center justify-between mb-1">
@@ -543,6 +550,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
       </label>
       <Button onClick={() => onSave(value)} disabled={saving || !value}>{saving ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Image'}</Button>
     </div>
+    {error && <p className="text-[11px] text-[hsl(var(--destructive))] mt-1.5">{error}</p>}
     <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1.5">Pick an image to preview it, then click "Save Hero Image" to publish. Recommended 1920×1080 (or 1600×900) — other sizes will auto-fill the hero.</p>
   </div>;
 }
