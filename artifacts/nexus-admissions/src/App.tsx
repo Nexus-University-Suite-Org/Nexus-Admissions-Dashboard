@@ -2073,7 +2073,7 @@ function SiteSettingsPage() {
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
                 <div className="flex gap-3">
-                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Donate Now" />
+                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} onBlur={() => save('impact_cta_btn1_text', impactCtaBtn1Text)} className="max-w-md" placeholder="e.g. Donate Now" />
                   <button onClick={() => { setImpactCtaBtn1Visible(!impactCtaBtn1Visible); save('impact_cta_btn1_visible', String(!impactCtaBtn1Visible)); }}
                     className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {impactCtaBtn1Visible ? 'Visible' : 'Hidden'}
@@ -2083,7 +2083,7 @@ function SiteSettingsPage() {
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
                 <div className="flex gap-3">
-                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} onBlur={() => save('impact_cta_btn2_text', impactCtaBtn2Text)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
                   <button onClick={() => { setImpactCtaBtn2Visible(!impactCtaBtn2Visible); save('impact_cta_btn2_visible', String(!impactCtaBtn2Visible)); }}
                     className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {impactCtaBtn2Visible ? 'Visible' : 'Hidden'}
