@@ -387,6 +387,84 @@ public class NapBackendClient {
         }
     }
 
+    public List<Map<String, Object>> fetchPartners() {
+        try {
+            String token = loginToNap();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners"))
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+            return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch partners: " + e.getMessage(), e);
+        }
+    }
+
+    public Map<String, Object> createPartner(Map<String, Object> body) {
+        try {
+            String token = loginToNap();
+            String json = objectMapper.writeValueAsString(body);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners"))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .POST(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 201 && response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+            return objectMapper.readValue(response.body(), Map.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create partner: " + e.getMessage(), e);
+        }
+    }
+
+    public Map<String, Object> updatePartner(Long id, Map<String, Object> body) {
+        try {
+            String token = loginToNap();
+            String json = objectMapper.writeValueAsString(body);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners/" + id))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .PUT(HttpRequest.BodyPublishers.ofString(json))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+            return objectMapper.readValue(response.body(), Map.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to update partner: " + e.getMessage(), e);
+        }
+    }
+
+    public void deletePartner(Long id) {
+        try {
+            String token = loginToNap();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners/" + id))
+                    .header("Authorization", "Bearer " + token)
+                    .DELETE()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200 && response.statusCode() != 204) {
+                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete partner: " + e.getMessage(), e);
+        }
+    }
+
     private String loginToNap() {
         try {
             String json = objectMapper.writeValueAsString(Map.of("email", "admin@nexus.edu", "password", "admin123"));

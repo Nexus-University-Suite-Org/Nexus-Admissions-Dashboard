@@ -131,4 +131,25 @@ public class AdminController {
         adminFacade.deleteGalleryItem(id);
         return ResponseEntity.ok().build();
     }
+
+    @GetMapping("/partners")
+    public ResponseEntity<List<Map<String, Object>>> listPartners() {
+        return ResponseEntity.ok(adminFacade.fetchPartners());
+    }
+
+    @PostMapping("/partners")
+    public ResponseEntity<Map<String, Object>> createPartner(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.createPartner(body));
+    }
+
+    @PutMapping("/partners/{id}")
+    public ResponseEntity<Map<String, Object>> updatePartner(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.updatePartner(id, body));
+    }
+
+    @DeleteMapping("/partners/{id}")
+    public ResponseEntity<Void> deletePartner(@PathVariable Long id) {
+        adminFacade.deletePartner(id);
+        return ResponseEntity.ok().build();
+    }
 }

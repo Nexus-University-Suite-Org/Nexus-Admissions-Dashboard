@@ -241,6 +241,127 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <Shell identity={me.data}>{children}</Shell>;
 }
 
+function PartnersManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: partners = [], isLoading } = useQuery({
+    queryKey: ['admin-partners'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/partners`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/partners/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-partners'] }),
+  });
+
+  if (showForm) {
+    return <PartnerForm partner={editing} onClose={() => { setShowForm(false); setEditing(null); }} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Partner</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : partners.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No partners yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {partners.map((p) => (
+            <div key={p.id} className="flex items-center gap-4 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted)/.3)] transition-colors">
+              {p.logoUrl && <img src={p.logoUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{p.name || 'Unnamed'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{p.description || 'No description'}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(p); setShowForm(true); }}><Pencil size={14} /></Button>
+                <Button variant="ghost" size="sm" onClick={() => { if (confirm('Delete this partner?')) deleteMutation.mutate(Number(p.id)); }} className="text-red-500 hover:text-red-600"><Trash2 size={14} /></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartnerForm({ partner, onClose }: { partner: Record<string, string> | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    name: partner?.name || '',
+    description: partner?.description || '',
+    logoUrl: partner?.logoUrl || '',
+    websiteUrl: partner?.websiteUrl || '',
+    tenantId: partner?.tenantId || '1',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
+      }
+    } finally { setUploading(false); }
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      if (partner?.id) return customFetch(`${NAD_API}/api/v1/admin/partners/${partner.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      return customFetch(`${NAD_API}/api/v1/admin/partners`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 mb-4">
+        <Button variant="ghost" size="sm" onClick={onClose}><ArrowLeft size={16} /></Button>
+        <h3 className="text-sm font-semibold">{partner ? 'Edit Partner' : 'Add Partner'}</h3>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Name *</label>
+          <Input value={form.name} onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g. Ministry of Education" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Website URL</label>
+          <Input value={form.websiteUrl} onChange={(e) => setForm(prev => ({ ...prev, websiteUrl: e.target.value }))} placeholder="e.g. https://example.com" />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+        <textarea value={form.description} onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="Brief description of the partner..." />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo</label>
+        <div className="flex gap-3 items-center">
+          <label className="flex items-center gap-2 px-4 py-2 border border-[hsl(var(--border))] rounded-lg text-sm cursor-pointer hover:bg-[hsl(var(--muted)/.3)]">
+            <Image size={16} /> {uploading ? 'Uploading...' : 'Upload Logo'}
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }} />
+          </label>
+          {form.logoUrl && <img src={form.logoUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />}
+        </div>
+      </div>
+      <Button onClick={() => saveMutation.mutate(form)} disabled={!form.name || saveMutation.isPending}>
+        {saveMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : partner ? 'Update Partner' : 'Create Partner'}
+      </Button>
+    </div>
+  );
+}
+
 function LoginPage() {
   const [, setLocation] = useLocation();
   const login = useAdminLogin();
@@ -2570,6 +2691,13 @@ function SiteSettingsPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Manage Partners CRUD */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Partners</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove partner organisations displayed on the Partners page.</p>
+            <PartnersManager />
           </div>
         </div>
       )}

@@ -255,4 +255,20 @@ public class AdminFacade {
     public void deleteGalleryItem(Long id) {
         napClient.deleteGalleryItem(id);
     }
+
+    public List<Map<String, Object>> fetchPartners() {
+        return napClient.fetchPartners();
+    }
+
+    public Map<String, Object> createPartner(Map<String, Object> body) {
+        return napClient.createPartner(body);
+    }
+
+    public Map<String, Object> updatePartner(Long id, Map<String, Object> body) {
+        return napClient.updatePartner(id, body);
+    }
+
+    public void deletePartner(Long id) {
+        napClient.deletePartner(id);
+    }
 }
