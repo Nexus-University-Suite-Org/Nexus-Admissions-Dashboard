@@ -623,6 +623,21 @@ function SiteSettingsPage() {
   const [galleryHeroHeading1, setGalleryHeroHeading1] = useState('');
   const [galleryHeroHeading2, setGalleryHeroHeading2] = useState('');
   const [galleryHeroDescription, setGalleryHeroDescription] = useState('');
+  const [impactHeroTagline, setImpactHeroTagline] = useState('');
+  const [impactHeroHeading1, setImpactHeroHeading1] = useState('');
+  const [impactHeroHeading2, setImpactHeroHeading2] = useState('');
+  const [impactHeroDescription, setImpactHeroDescription] = useState('');
+  const [impactStatsTagline, setImpactStatsTagline] = useState('');
+  const [impactStatsHeading, setImpactStatsHeading] = useState('');
+  const [impactStoriesTagline, setImpactStoriesTagline] = useState('');
+  const [impactStoriesHeading, setImpactStoriesHeading] = useState('');
+  const [impactStoriesDescription, setImpactStoriesDescription] = useState('');
+  const [impactCtaHeading, setImpactCtaHeading] = useState('');
+  const [impactCtaDescription, setImpactCtaDescription] = useState('');
+  const [impactCtaBtn1Text, setImpactCtaBtn1Text] = useState('');
+  const [impactCtaBtn1Visible, setImpactCtaBtn1Visible] = useState(true);
+  const [impactCtaBtn2Text, setImpactCtaBtn2Text] = useState('');
+  const [impactCtaBtn2Visible, setImpactCtaBtn2Visible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'footer'>('general');
@@ -735,6 +750,21 @@ function SiteSettingsPage() {
       setGalleryHeroHeading1(getSetting('gallery_hero_heading_1'));
       setGalleryHeroHeading2(getSetting('gallery_hero_heading_2'));
       setGalleryHeroDescription(getSetting('gallery_hero_description'));
+      setImpactHeroTagline(getSetting('impact_hero_tagline'));
+      setImpactHeroHeading1(getSetting('impact_hero_heading_1'));
+      setImpactHeroHeading2(getSetting('impact_hero_heading_2'));
+      setImpactHeroDescription(getSetting('impact_hero_description'));
+      setImpactStatsTagline(getSetting('impact_stats_tagline'));
+      setImpactStatsHeading(getSetting('impact_stats_heading'));
+      setImpactStoriesTagline(getSetting('impact_stories_tagline'));
+      setImpactStoriesHeading(getSetting('impact_stories_heading'));
+      setImpactStoriesDescription(getSetting('impact_stories_description'));
+      setImpactCtaHeading(getSetting('impact_cta_heading'));
+      setImpactCtaDescription(getSetting('impact_cta_description'));
+      setImpactCtaBtn1Text(getSetting('impact_cta_btn1_text'));
+      setImpactCtaBtn1Visible(getSetting('impact_cta_btn1_visible') !== 'false');
+      setImpactCtaBtn2Text(getSetting('impact_cta_btn2_text'));
+      setImpactCtaBtn2Visible(getSetting('impact_cta_btn2_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -767,6 +797,7 @@ function SiteSettingsPage() {
           { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
           { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
           { key: 'stories' as const, label: 'Student Stories', desc: 'Student stories page hero & content' },
+          { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats, stories & CTA' },
           { key: 'gallery' as const, label: 'Gallery', desc: 'Photo gallery page hero & content' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
@@ -1904,6 +1935,162 @@ function SiteSettingsPage() {
             <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Stories</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove student stories displayed on the Stories page.</p>
             <StudentStoriesManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
+      {activeTab === 'impact' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
+                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
+                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
+                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof..." />
+                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stats Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Our Impact In Numbers" section heading.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
+                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
+                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Meet Our Graduates" section.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
+                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
+                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic..." />
+                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call to Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The bottom CTA section of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
+                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
+                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Donate Now" />
+                  <button onClick={() => { setImpactCtaBtn1Visible(!impactCtaBtn1Visible); save('impact_cta_btn1_visible', String(!impactCtaBtn1Visible)); }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {impactCtaBtn1Visible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                  <button onClick={() => { setImpactCtaBtn2Visible(!impactCtaBtn2Visible); save('impact_cta_btn2_visible', String(!impactCtaBtn2Visible)); }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {impactCtaBtn2Visible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
