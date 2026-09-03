@@ -883,21 +883,26 @@ function SiteSettingsPage() {
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Image</label>
                 {splashLogoUrl && <img src={splashLogoUrl} alt="Logo" className="w-16 h-16 rounded-lg object-cover mb-2" />}
-                <input type="file" accept="image/*" onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const formData = new FormData();
-                  formData.append('file', file);
-                  try {
-                    const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
-                    if (res.ok) {
-                      const data = await res.json();
-                      const url = data.url || data.fileUrl || '';
-                      setSplashLogoUrl(url);
-                      save('splash_logo_url', url);
-                    }
-                  } catch {}
-                }} className="text-sm" />
+                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] hover:bg-[hsl(var(--muted))] cursor-pointer transition-colors text-sm font-medium">
+                  <Image size={14} />
+                  Choose Logo Image
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      if (res.ok) {
+                        const data = await res.json();
+                        const url = data.url || data.fileUrl || '';
+                        setSplashLogoUrl(url);
+                        save('splash_logo_url', url);
+                      }
+                    } catch {}
+                  }} />
+                </label>
+                {splashLogoUrl && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Uploaded ✓</p>}
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Fallback Text</label>
