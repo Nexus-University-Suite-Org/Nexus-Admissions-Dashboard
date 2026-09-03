@@ -538,6 +538,11 @@ function SiteSettingsPage() {
   const [aboutCtaPartnerBtn, setAboutCtaPartnerBtn] = useState('');
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
+  const [splashLogoUrl, setSplashLogoUrl] = useState('');
+  const [splashLogoText, setSplashLogoText] = useState('IU');
+  const [splashName, setSplashName] = useState('Institute Uganda');
+  const [splashMotto, setSplashMotto] = useState('Empowering Through Vocational Skills');
+  const [splashStatusText, setSplashStatusText] = useState('Preparing Experience');
   const [heroTagline, setHeroTagline] = useState('');
   const [heroHeading1, setHeroHeading1] = useState('');
   const [heroHeading2, setHeroHeading2] = useState('');
@@ -645,6 +650,11 @@ function SiteSettingsPage() {
       setAboutCtaPartnerBtn(getSetting('about_cta_partner_btn'));
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
+      setSplashLogoUrl(getSetting('splash_logo_url'));
+      setSplashLogoText(getSetting('splash_logo_text') || 'IU');
+      setSplashName(getSetting('splash_name') || 'Institute Uganda');
+      setSplashMotto(getSetting('splash_motto') || 'Empowering Through Vocational Skills');
+      setSplashStatusText(getSetting('splash_status_text') || 'Preparing Experience');
       setHeroTagline(getSetting('hero_tagline'));
       setHeroHeading1(getSetting('hero_heading_1'));
       setHeroHeading2(getSetting('hero_heading_2'));
@@ -750,6 +760,7 @@ function SiteSettingsPage() {
       <div className="flex gap-1 border-b border-[hsl(var(--border))]">
         {[
           { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
+          { key: 'splash' as const, label: 'Splash Screen', desc: 'Logo, name & motto on loading screen' },
           { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
           { key: 'about' as const, label: 'About', desc: 'About page content' },
           { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
@@ -841,6 +852,90 @@ function SiteSettingsPage() {
             <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
               {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ SPLASH SCREEN TAB ═══════════════════ */}
+      {activeTab === 'splash' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Splash Screen</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Configure the logo, name, and motto shown on the loading screen.</p>
+
+            {/* Logo Preview */}
+            <div className="flex items-center gap-6 mb-6 p-4 rounded-xl bg-[hsl(var(--muted)/.4)]">
+              <div className="w-20 h-20 rounded-full bg-[hsl(var(--primary))] flex items-center justify-center overflow-hidden shrink-0">
+                {splashLogoUrl ? (
+                  <img src={splashLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xl font-bold text-[hsl(var(--primary-foreground))]">{splashLogoText || 'IU'}</span>
+                )}
+              </div>
+              <div>
+                <p className="font-heading text-xl font-light uppercase">{splashName || 'Institute Uganda'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{splashMotto || 'Empowering Through Vocational Skills'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Image</label>
+                {splashLogoUrl && <img src={splashLogoUrl} alt="Logo" className="w-16 h-16 rounded-lg object-cover mb-2" />}
+                <input type="file" accept="image/*" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  try {
+                    const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                    if (res.ok) {
+                      const data = await res.json();
+                      const url = data.url || data.fileUrl || '';
+                      setSplashLogoUrl(url);
+                      save('splash_logo_url', url);
+                    }
+                  } catch {}
+                }} className="text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Fallback Text</label>
+                <div className="flex gap-3">
+                  <Input value={splashLogoText} onChange={(e) => setSplashLogoText(e.target.value)} className="max-w-md" placeholder="e.g. IU" />
+                  <Button onClick={() => save('splash_logo_text', splashLogoText)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Shown inside the circle when no logo image is uploaded.</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Institute Name</label>
+                <div className="flex gap-3">
+                  <Input value={splashName} onChange={(e) => setSplashName(e.target.value)} className="max-w-md" placeholder="e.g. Institute Uganda" />
+                  <Button onClick={() => save('splash_name', splashName)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Motto / Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={splashMotto} onChange={(e) => setSplashMotto(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Through Vocational Skills" />
+                  <Button onClick={() => save('splash_motto', splashMotto)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Loading Status Text</label>
+                <div className="flex gap-3">
+                  <Input value={splashStatusText} onChange={(e) => setSplashStatusText(e.target.value)} className="max-w-md" placeholder="e.g. Preparing Experience" />
+                  <Button onClick={() => save('splash_status_text', splashStatusText)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
