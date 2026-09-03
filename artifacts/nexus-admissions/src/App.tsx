@@ -629,6 +629,7 @@ function SiteSettingsPage() {
   const [impactHeroDescription, setImpactHeroDescription] = useState('');
   const [impactStatsTagline, setImpactStatsTagline] = useState('');
   const [impactStatsHeading, setImpactStatsHeading] = useState('');
+  const [impactStats, setImpactStats] = useState<{value: number; suffix: string; label: string}[]>([]);
   const [impactStoriesTagline, setImpactStoriesTagline] = useState('');
   const [impactStoriesHeading, setImpactStoriesHeading] = useState('');
   const [impactStoriesDescription, setImpactStoriesDescription] = useState('');
@@ -756,6 +757,7 @@ function SiteSettingsPage() {
       setImpactHeroDescription(getSetting('impact_hero_description'));
       setImpactStatsTagline(getSetting('impact_stats_tagline'));
       setImpactStatsHeading(getSetting('impact_stats_heading'));
+      try { setImpactStats(JSON.parse(getSetting('impact_stats') || '[]')); } catch { setImpactStats([]); }
       setImpactStoriesTagline(getSetting('impact_stories_tagline'));
       setImpactStoriesHeading(getSetting('impact_stories_heading'));
       setImpactStoriesDescription(getSetting('impact_stories_description'));
@@ -2007,6 +2009,23 @@ function SiteSettingsPage() {
                   <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Stats</label>
+                <div className="space-y-2">
+                  {impactStats.map((stat, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input value={stat.value} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], value: Number(e.target.value)}; setImpactStats(v); }} className="w-20" placeholder="1200" />
+                      <Input value={stat.suffix} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], suffix: e.target.value}; setImpactStats(v); }} className="w-14" placeholder="+" />
+                      <Input value={stat.label} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], label: e.target.value}; setImpactStats(v); }} className="flex-1" placeholder="Label" />
+                      <button onClick={() => { const v = impactStats.filter((_, j) => j !== i); setImpactStats(v); }} className="text-red-400 hover:text-red-600 px-1"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                  <div className="flex gap-3">
+                    <button onClick={() => setImpactStats([...impactStats, {value: 0, suffix: '', label: ''}])} className="text-xs text-blue-600 hover:underline">+ Add Stat</button>
+                    <button onClick={() => save('impact_stats', JSON.stringify(impactStats))} className="text-xs text-green-600 hover:underline font-medium">Save Stats</button>
+                  </div>
                 </div>
               </div>
             </div>
