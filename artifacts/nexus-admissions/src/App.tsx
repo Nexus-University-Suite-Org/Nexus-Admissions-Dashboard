@@ -24,12 +24,14 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Pencil,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   UserRound,
   UsersRound,
   X,
@@ -65,6 +67,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import './index.css';
 
+const NAD_API = 'http://localhost:8083';
 const queryClient = new QueryClient();
 setBaseUrl('http://localhost:8083');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
@@ -610,6 +613,10 @@ function SiteSettingsPage() {
   const [storiesCtaBtn1Visible, setStoriesCtaBtn1Visible] = useState(true);
   const [storiesCtaBtn2Text, setStoriesCtaBtn2Text] = useState('');
   const [storiesCtaBtn2Visible, setStoriesCtaBtn2Visible] = useState(true);
+  const [galleryHeroTagline, setGalleryHeroTagline] = useState('');
+  const [galleryHeroHeading1, setGalleryHeroHeading1] = useState('');
+  const [galleryHeroHeading2, setGalleryHeroHeading2] = useState('');
+  const [galleryHeroDescription, setGalleryHeroDescription] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'footer'>('general');
@@ -713,6 +720,10 @@ function SiteSettingsPage() {
       setStoriesCtaBtn1Visible(getSetting('stories_cta_btn1_visible') !== 'false');
       setStoriesCtaBtn2Text(getSetting('stories_cta_btn2_text'));
       setStoriesCtaBtn2Visible(getSetting('stories_cta_btn2_visible') !== 'false');
+      setGalleryHeroTagline(getSetting('gallery_hero_tagline'));
+      setGalleryHeroHeading1(getSetting('gallery_hero_heading_1'));
+      setGalleryHeroHeading2(getSetting('gallery_hero_heading_2'));
+      setGalleryHeroDescription(getSetting('gallery_hero_description'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -744,6 +755,7 @@ function SiteSettingsPage() {
           { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
           { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
           { key: 'stories' as const, label: 'Student Stories', desc: 'Student stories page hero & content' },
+          { key: 'gallery' as const, label: 'Gallery', desc: 'Photo gallery page hero & content' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -1785,6 +1797,69 @@ function SiteSettingsPage() {
               </div>
             </div>
           </div>
+
+          {/* Manage Stories CRUD */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Stories</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove student stories displayed on the Stories page.</p>
+            <StudentStoriesManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ GALLERY TAB ═══════════════════ */}
+      {activeTab === 'gallery' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Photo Gallery page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroTagline} onChange={(e) => setGalleryHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Photo Gallery" />
+                  <Button onClick={() => save('gallery_hero_tagline', galleryHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroHeading1} onChange={(e) => setGalleryHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. See the Impact" />
+                  <Button onClick={() => save('gallery_hero_heading_1', galleryHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroHeading2} onChange={(e) => setGalleryHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. In Action" />
+                  <Button onClick={() => save('gallery_hero_heading_2', galleryHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroDescription} onChange={(e) => setGalleryHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Photos from our training sessions..." />
+                  <Button onClick={() => save('gallery_hero_description', galleryHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Manage Photos */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Photo Gallery</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove photos displayed on the Gallery page.</p>
+            <PhotoGalleryManager />
+          </div>
         </div>
       )}
 
@@ -1849,6 +1924,261 @@ function HomeRedirect() {
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+}
+
+function StudentStoriesManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: stories = [], isLoading } = useQuery({
+    queryKey: ['admin-student-stories'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/student-stories`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/student-stories/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-student-stories'] }),
+  });
+
+  const handleUpload = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url || data.fileUrl || null;
+    } catch { return null; }
+  };
+
+  if (showForm) {
+    return <StudentStoryForm story={editing} onClose={() => { setShowForm(false); setEditing(null); }} onUpload={handleUpload} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Story</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : stories.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No student stories yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {stories.map((s) => (
+            <div key={s.id} className="flex items-center gap-4 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted)/.3)] transition-colors">
+              {s.imageUrl && <img src={s.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{s.title || 'Untitled'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{s.studentName || s.author || 'Unknown'}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(s); setShowForm(true); }}><span className="sr-only">Edit</span></Button>
+                <Button variant="ghost" size="sm" onClick={() => { if (confirm('Delete this story?')) deleteMutation.mutate(Number(s.id)); }} className="text-red-500 hover:text-red-600"><span className="sr-only">Delete</span></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StudentStoryForm({ story, onClose, onUpload }: { story: Record<string, string> | null; onClose: () => void; onUpload: (file: File) => Promise<string | null> }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    title: story?.title || '', slug: story?.slug || '', content: story?.content || '',
+    studentName: story?.studentName || '', author: story?.author || '',
+    program: story?.program || '', graduationYear: story?.graduationYear || '',
+    imageUrl: story?.imageUrl || '', featured: story?.featured === 'true',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const body = { ...data, featured: String(data.featured) };
+      if (story?.id) return customFetch(`${NAD_API}/api/v1/admin/student-stories/${story.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return customFetch(`${NAD_API}/api/v1/admin/student-stories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-student-stories'] });
+      onClose();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await onUpload(file);
+    if (url) setForm(f => ({ ...f, imageUrl: url }));
+    setUploading(false);
+  };
+
+  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onClose}><X size={16} /></Button>
+        <h2 className="nexus-serif text-lg font-semibold">{story ? 'Edit Story' : 'New Story'}</h2>
+      </div>
+      <div className="nexus-card rounded-2xl border p-6 space-y-4">
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label><input value={form.title} onChange={e => set('title', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Student Name</label><input value={form.studentName} onChange={e => set('studentName', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Program</label><input value={form.program} onChange={e => set('program', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Graduation Year</label><input value={form.graduationYear} onChange={e => set('graduationYear', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Author</label><input value={form.author} onChange={e => set('author', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Content</label><textarea value={form.content} onChange={e => set('content', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[120px]" /></div>
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Image</label>
+          {form.imageUrl && <img src={form.imageUrl} alt="" className="w-24 h-24 rounded-lg object-cover mb-2" />}
+          <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="text-sm" />
+          {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={form.featured} onChange={e => set('featured', e.target.checked)} id="featured" className="rounded" />
+          <label htmlFor="featured" className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Featured</label>
+        </div>
+        <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="animate-spin mr-1" size={14} /> : null}
+          {story ? 'Update Story' : 'Create Story'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PhotoGalleryManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['admin-gallery'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/gallery`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/gallery/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-gallery'] }),
+  });
+
+  const handleUpload = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url || data.fileUrl || null;
+    } catch { return null; }
+  };
+
+  if (showForm) {
+    return <GalleryItemForm item={editing} onClose={() => { setShowForm(false); setEditing(null); }} onUpload={handleUpload} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Photo</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No gallery photos yet.</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {items.map((item) => (
+            <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[hsl(var(--border))] aspect-square">
+              <img src={item.src} alt={item.alt || ''} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="absolute bottom-0 left-0 right-0 p-3">
+                  <p className="text-xs text-white font-medium truncate">{item.caption || 'No caption'}</p>
+                  {item.category && <p className="text-[10px] text-white/60 mt-0.5">{item.category}</p>}
+                </div>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button onClick={() => { setEditing(item); setShowForm(true); }} className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors"><Pencil size={12} className="text-white" /></button>
+                  <button onClick={() => { if (confirm('Delete this photo?')) deleteMutation.mutate(Number(item.id)); }} className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/80 transition-colors"><Trash2 size={12} className="text-white" /></button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, string> | null; onClose: () => void; onUpload: (file: File) => Promise<string | null> }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    src: item?.src || '', alt: item?.alt || '', caption: item?.caption || '',
+    category: item?.category || '', span: item?.span || '1',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const body = { ...data, span: parseInt(data.span as string) || 1 };
+      if (item?.id) return customFetch(`${NAD_API}/api/v1/admin/gallery/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return customFetch(`${NAD_API}/api/v1/admin/gallery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-gallery'] });
+      onClose();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await onUpload(file);
+    if (url) setForm(f => ({ ...f, src: url }));
+    setUploading(false);
+  };
+
+  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onClose}><X size={16} /></Button>
+        <h2 className="nexus-serif text-lg font-semibold">{item ? 'Edit Photo' : 'New Photo'}</h2>
+      </div>
+      <div className="nexus-card rounded-2xl border p-6 space-y-4">
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Photo</label>
+          {form.src && <img src={form.src} alt="" className="w-32 h-32 rounded-lg object-cover mb-2" />}
+          <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="text-sm" />
+          {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Caption</label><input value={form.caption} onChange={e => set('caption', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Describe this photo" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category</label><input value={form.category} onChange={e => set('category', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Training, Graduation" /></div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Span</label>
+            <select value={form.span} onChange={e => set('span', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
+              <option value="1">Normal</option>
+              <option value="2">Wide (2 cols)</option>
+              <option value="3">Tall (2 rows)</option>
+            </select>
+          </div>
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Alt Text</label><input value={form.alt} onChange={e => set('alt', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Accessibility text" /></div>
+        <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="animate-spin mr-1" size={14} /> : null}
+          {item ? 'Update Photo' : 'Add Photo'}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function Router() {
