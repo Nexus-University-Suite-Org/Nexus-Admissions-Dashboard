@@ -942,7 +942,7 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', requir
   return (
     <div>
       <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && ' *'}</label>
-      <Input type={type} value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
+      <Input type={type} value={value == null ? '' : String(value)} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
     </div>
   );
 }
