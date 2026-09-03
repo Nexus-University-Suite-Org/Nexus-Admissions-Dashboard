@@ -648,6 +648,7 @@ function SiteSettingsPage() {
   const [partnersTypesHeading2, setPartnersTypesHeading2] = useState('');
   const [partnersStatsTagline, setPartnersStatsTagline] = useState('');
   const [partnersStatsHeading, setPartnersStatsHeading] = useState('');
+  const [partnersStatsDescription, setPartnersStatsDescription] = useState('');
   const [partnerTypes, setPartnerTypes] = useState<Array<{ title: string; description: string; benefits: string[] }>>([]);
   const [partnersStats, setPartnersStats] = useState<Array<{ value: string; label: string }>>([]);
   const [partnersCtaTagline, setPartnersCtaTagline] = useState('');
@@ -791,6 +792,7 @@ function SiteSettingsPage() {
       setPartnersTypesHeading2(getSetting('partners_types_heading_2'));
       setPartnersStatsTagline(getSetting('partners_stats_tagline'));
       setPartnersStatsHeading(getSetting('partners_stats_heading'));
+      setPartnersStatsDescription(getSetting('partners_stats_description'));
       try { setPartnersStats(JSON.parse(getSetting('partners_stats') || '[]')); } catch { setPartnersStats([]); }
       try { setPartnerTypes(JSON.parse(getSetting('partners_partner_types'))); } catch { setPartnerTypes([]); }
       setPartnersCtaTagline(getSetting('partners_cta_tagline'));
@@ -2491,6 +2493,15 @@ function SiteSettingsPage() {
                 <div className="flex gap-3">
                   <Input value={partnersStatsHeading} onChange={(e) => setPartnersStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Current Partners" />
                   <Button onClick={() => save('partners_stats_heading', partnersStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsDescription} onChange={(e) => setPartnersStatsDescription(e.target.value)} className="max-w-md" placeholder="e.g. We are grateful to work with..." />
+                  <Button onClick={() => save('partners_stats_description', partnersStatsDescription)} disabled={updateMutation.isPending}>
                     {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
                   </Button>
                 </div>
