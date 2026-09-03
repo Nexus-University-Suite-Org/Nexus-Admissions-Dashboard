@@ -512,6 +512,41 @@ function SubjectTable({ label, json }: { label: string; json?: string | null }) 
   return <div className="sm:col-span-2 lg:col-span-3"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p>{rows.length > 0 ? <div className="mt-2 overflow-hidden rounded-lg border border-[hsl(var(--border))]"><table className="w-full text-xs"><thead><tr className="bg-[hsl(var(--muted)/.4)]"><th className="px-3 py-2 text-left font-bold">Subject</th><th className="px-3 py-2 text-left font-bold">Grade</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{rows.map((s, i) => <tr key={i} className="hover:bg-[hsl(var(--muted)/.3)]"><td className="px-3 py-2">{s.subject}</td><td className="px-3 py-2 font-semibold">{s.grade}</td></tr>)}</tbody></table></div> : <p className="mt-1.5 text-sm">—</p>}</div>;
 }
 
+function HeroImageField({ label, hint, value, onChange, onSave, saving }: { label: string; hint?: string; value: string; onChange: (url: string) => void; onSave: (url: string) => void; saving: boolean }) {
+  const [uploading, setUploading] = useState(false);
+  const upload = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        const url = data.url || data.fileUrl || '';
+        if (url) onChange(url);
+      }
+    } catch {} finally { setUploading(false); }
+  };
+  return <div>
+    <div className="flex items-center justify-between mb-1">
+      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))]">{label}</label>
+      {value && <span className="text-[10px] text-[hsl(160_43%_25%)] bg-[hsl(160_35%_85%)] px-2 py-0.5 rounded-full">Uploaded ✓</span>}
+    </div>
+    {hint && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-2">{hint}</p>}
+    {value && <img src={value} alt={label} className="w-full max-h-44 rounded-lg object-cover mb-2 border border-[hsl(var(--border))]" />}
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] hover:bg-[hsl(var(--muted))] cursor-pointer transition-colors text-sm font-medium">
+        <Image size={14} />
+        {uploading ? 'Uploading…' : 'Choose Hero Image'}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+      </label>
+      <Button onClick={() => onSave(value)} disabled={saving || !value}>{saving ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Image'}</Button>
+    </div>
+    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1.5">Pick an image to preview it, then click "Save Hero Image" to publish. Recommended 1920×1080 (or 1600×900) — other sizes will auto-fill the hero.</p>
+  </div>;
+}
+
 function ReviewPanel({ app }: { app: Application }) {
   const queryClient = useQueryClient();
   const review = useReviewAdminApplication();
@@ -686,6 +721,17 @@ function SiteSettingsPage() {
   const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
   const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
   const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
+  const [homeHeroImage, setHomeHeroImage] = useState('');
+  const [aboutHeroImage, setAboutHeroImage] = useState('');
+  const [newsHeroImage, setNewsHeroImage] = useState('');
+  const [programsHeroImage, setProgramsHeroImage] = useState('');
+  const [storiesHeroImage, setStoriesHeroImage] = useState('');
+  const [impactHeroImage, setImpactHeroImage] = useState('');
+  const [partnersHeroImage, setPartnersHeroImage] = useState('');
+  const [donateHeroImage, setDonateHeroImage] = useState('');
+  const [contactHeroImage, setContactHeroImage] = useState('');
+  const [researchHeroImage, setResearchHeroImage] = useState('');
+  const [studentsHeroImage, setStudentsHeroImage] = useState('');
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
   const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
   const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
@@ -814,7 +860,7 @@ function SiteSettingsPage() {
   const [donateNeedVisible, setDonateNeedVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'footer' | 'splash'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'contact' | 'research' | 'students' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -857,6 +903,17 @@ function SiteSettingsPage() {
       setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
       setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
       try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
+      setHomeHeroImage(getSetting('home_hero_image'));
+      setAboutHeroImage(getSetting('about_hero_image'));
+      setNewsHeroImage(getSetting('news_hero_image'));
+      setProgramsHeroImage(getSetting('programs_hero_image'));
+      setStoriesHeroImage(getSetting('stories_hero_image'));
+      setImpactHeroImage(getSetting('impact_hero_image'));
+      setPartnersHeroImage(getSetting('partners_hero_image'));
+      setDonateHeroImage(getSetting('donate_hero_image'));
+      setContactHeroImage(getSetting('contact_hero_image'));
+      setResearchHeroImage(getSetting('research_hero_image'));
+      setStudentsHeroImage(getSetting('students_hero_image'));
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
       setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
       setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
@@ -1020,6 +1077,9 @@ function SiteSettingsPage() {
           { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats & content' },
           { key: 'partners' as const, label: 'Partners', desc: 'Partners page hero, ways to partner & CTA' },
           { key: 'donate' as const, label: 'Donate', desc: 'Donate page hero & content' },
+          { key: 'contact' as const, label: 'Contact', desc: 'Contact page hero image' },
+          { key: 'research' as const, label: 'Research', desc: 'Research page hero image' },
+          { key: 'students' as const, label: 'Students', desc: 'Students page hero image' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -1201,6 +1261,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ HOME TAB ═══════════════════ */}
       {activeTab === 'home' && (
         <div className="space-y-8 pt-4">
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the homepage hero section.</p>
+        <HeroImageField label="Homepage Hero Image" value={homeHeroImage} onChange={setHomeHeroImage} onSave={(url) => save('home_hero_image', url)} saving={updateMutation.isPending} />
+      </div>
+
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
@@ -1603,6 +1669,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ ABOUT TAB ═══════════════════ */}
       {activeTab === 'about' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the About page hero section.</p>
+            <HeroImageField label="About Page Hero Image" value={aboutHeroImage} onChange={setAboutHeroImage} onSave={(url) => save('about_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* About Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
@@ -1736,6 +1808,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ NEWS & EVENTS TAB ═══════════════════ */}
       {activeTab === 'news' && (
         <div className="space-y-8 pt-4">
+          {/* News Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the News & Events page hero section.</p>
+            <HeroImageField label="News Page Hero Image" value={newsHeroImage} onChange={setNewsHeroImage} onSave={(url) => save('news_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* News Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">News Hero Section</h2>
@@ -1912,6 +1990,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ PROGRAMS TAB ═══════════════════ */}
       {activeTab === 'programs' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Programs page hero section.</p>
+            <HeroImageField label="Programs Page Hero Image" value={programsHeroImage} onChange={setProgramsHeroImage} onSave={(url) => save('programs_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -1996,6 +2080,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ STUDENT STORIES TAB ═══════════════════ */}
       {activeTab === 'stories' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Student Stories page hero section.</p>
+            <HeroImageField label="Student Stories Page Hero Image" value={storiesHeroImage} onChange={setStoriesHeroImage} onSave={(url) => save('stories_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -2163,6 +2253,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
       {activeTab === 'impact' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Impact page hero section.</p>
+            <HeroImageField label="Impact Page Hero Image" value={impactHeroImage} onChange={setImpactHeroImage} onSave={(url) => save('impact_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -2548,6 +2644,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ PARTNERS TAB ═══════════════════ */}
       {activeTab === 'partners' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Partners page hero section.</p>
+            <HeroImageField label="Partners Page Hero Image" value={partnersHeroImage} onChange={setPartnersHeroImage} onSave={(url) => save('partners_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -2769,6 +2871,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ DONATE TAB ═══════════════════ */}
       {activeTab === 'donate' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Donate page hero section.</p>
+            <HeroImageField label="Donate Page Hero Image" value={donateHeroImage} onChange={setDonateHeroImage} onSave={(url) => save('donate_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -3058,6 +3166,39 @@ function SiteSettingsPage() {
                 {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save FAQs'}
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ CONTACT TAB ═══════════════════ */}
+      {activeTab === 'contact' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Contact page hero section.</p>
+            <HeroImageField label="Contact Page Hero Image" value={contactHeroImage} onChange={setContactHeroImage} onSave={(url) => save('contact_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ RESEARCH TAB ═══════════════════ */}
+      {activeTab === 'research' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Research page hero section.</p>
+            <HeroImageField label="Research Page Hero Image" value={researchHeroImage} onChange={setResearchHeroImage} onSave={(url) => save('research_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ STUDENTS TAB ═══════════════════ */}
+      {activeTab === 'students' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Students page hero section.</p>
+            <HeroImageField label="Students Page Hero Image" value={studentsHeroImage} onChange={setStudentsHeroImage} onSave={(url) => save('students_hero_image', url)} saving={updateMutation.isPending} />
           </div>
         </div>
       )}
