@@ -17,6 +17,7 @@ import {
   ExternalLink,
   FileCheck2,
   Image,
+  ImagePlus,
   FileText,
   Filter,
   GraduationCap,
@@ -2037,7 +2038,11 @@ function StudentStoryForm({ story, onClose, onUpload }: { story: Record<string, 
         <div>
           <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Image</label>
           {form.imageUrl && <img src={form.imageUrl} alt="" className="w-24 h-24 rounded-lg object-cover mb-2" />}
-          <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="text-sm" />
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[hsl(var(--primary))] text-primary-foreground text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
+            {uploading ? <Loader2 className="animate-spin" size={14} /> : <ImagePlus size={14} />}
+            {form.imageUrl ? 'Change Photo' : 'Choose Photo'}
+            <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="hidden" />
+          </label>
           {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
         </div>
         <div className="flex items-center gap-2">
@@ -2097,14 +2102,14 @@ function PhotoGalleryManager() {
           {items.map((item) => (
             <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[hsl(var(--border))] aspect-square">
               <img src={item.src} alt={item.alt || ''} className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute top-2 right-2 flex gap-1 z-10">
+                <button onClick={() => { setEditing(item); setShowForm(true); }} className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors"><Pencil size={12} className="text-white" /></button>
+                <button onClick={() => { if (confirm('Delete this photo?')) deleteMutation.mutate(Number(item.id)); }} className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/80 transition-colors"><Trash2 size={12} className="text-white" /></button>
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none">
                 <div className="absolute bottom-0 left-0 right-0 p-3">
                   <p className="text-xs text-white font-medium truncate">{item.caption || 'No caption'}</p>
                   {item.category && <p className="text-[10px] text-white/60 mt-0.5">{item.category}</p>}
-                </div>
-                <div className="absolute top-2 right-2 flex gap-1">
-                  <button onClick={() => { setEditing(item); setShowForm(true); }} className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors"><Pencil size={12} className="text-white" /></button>
-                  <button onClick={() => { if (confirm('Delete this photo?')) deleteMutation.mutate(Number(item.id)); }} className="w-7 h-7 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/80 transition-colors"><Trash2 size={12} className="text-white" /></button>
                 </div>
               </div>
             </div>
@@ -2124,13 +2129,22 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
   const [uploading, setUploading] = useState(false);
 
   const saveMutation = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
+    mutationFn: async (data: Record<string, unknown>): Promise<Record<string, string>> => {
       const body = { ...data, span: parseInt(data.span as string) || 1 };
       if (item?.id) return customFetch(`${NAD_API}/api/v1/admin/gallery/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       return customFetch(`${NAD_API}/api/v1/admin/gallery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-gallery'] });
+    onSuccess: async (saved) => {
+      queryClient.setQueryData<Record<string, string>[]>(['admin-gallery'], (old = []) => {
+        const idx = old.findIndex((g) => String(g.id) === String(saved.id));
+        if (idx >= 0) {
+          const next = [...old];
+          next[idx] = saved;
+          return next;
+        }
+        return [saved, ...old];
+      });
+      await queryClient.refetchQueries({ queryKey: ['admin-gallery'] });
       onClose();
     },
   });
@@ -2156,7 +2170,16 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
         <div>
           <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Photo</label>
           {form.src && <img src={form.src} alt="" className="w-32 h-32 rounded-lg object-cover mb-2" />}
-          <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="text-sm" />
+          {!form.src && (
+            <div className="w-32 h-32 rounded-lg border-2 border-dashed border-[hsl(var(--border))] flex items-center justify-center mb-2">
+              <ImagePlus size={20} className="text-[hsl(var(--muted-foreground))]" />
+            </div>
+          )}
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[hsl(var(--primary))] text-primary-foreground text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
+            {uploading ? <Loader2 className="animate-spin" size={14} /> : <ImagePlus size={14} />}
+            {form.src ? 'Change Photo' : 'Choose Photo'}
+            <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="hidden" />
+          </label>
           {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
         </div>
         <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Caption</label><input value={form.caption} onChange={e => set('caption', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Describe this photo" /></div>
