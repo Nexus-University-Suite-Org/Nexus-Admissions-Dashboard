@@ -347,12 +347,21 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
       </div>
       <div>
         <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo</label>
-        <div className="flex gap-3 items-center">
-          <label className="flex items-center gap-2 px-4 py-2 border border-[hsl(var(--border))] rounded-lg text-sm cursor-pointer hover:bg-[hsl(var(--muted)/.3)]">
-            <Image size={16} /> {uploading ? 'Uploading...' : 'Upload Logo'}
+        <div className="flex gap-4 items-start">
+          <label className="flex flex-col items-center justify-center gap-2 w-32 h-32 border-2 border-dashed border-[hsl(var(--border))] rounded-xl cursor-pointer hover:border-[hsl(var(--primary)/.5)] hover:bg-[hsl(var(--muted)/.2)] transition-all">
+            {form.logoUrl ? (
+              <img src={form.logoUrl} alt="Logo preview" className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <>
+                <Image size={24} className="text-[hsl(var(--muted-foreground))]" />
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))] text-center px-1">{uploading ? 'Uploading...' : 'Click to upload'}</span>
+              </>
+            )}
             <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }} />
           </label>
-          {form.logoUrl && <img src={form.logoUrl} alt="" className="w-10 h-10 rounded-lg object-cover" />}
+          {form.logoUrl && (
+            <button onClick={() => setForm(prev => ({ ...prev, logoUrl: '' }))} className="text-xs text-red-500 hover:text-red-600 mt-1">Remove</button>
+          )}
         </div>
       </div>
       <Button onClick={() => saveMutation.mutate(form)} disabled={!form.name || saveMutation.isPending}>
