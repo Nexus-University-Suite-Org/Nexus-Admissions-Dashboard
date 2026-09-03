@@ -639,9 +639,23 @@ function SiteSettingsPage() {
   const [impactCtaBtn1Visible, setImpactCtaBtn1Visible] = useState(true);
   const [impactCtaBtn2Text, setImpactCtaBtn2Text] = useState('');
   const [impactCtaBtn2Visible, setImpactCtaBtn2Visible] = useState(true);
+  const [partnersHeroTagline, setPartnersHeroTagline] = useState('');
+  const [partnersHeroHeading1, setPartnersHeroHeading1] = useState('');
+  const [partnersHeroHeading2, setPartnersHeroHeading2] = useState('');
+  const [partnersHeroDescription, setPartnersHeroDescription] = useState('');
+  const [partnersTypesTagline, setPartnersTypesTagline] = useState('');
+  const [partnersTypesHeading1, setPartnersTypesHeading1] = useState('');
+  const [partnersTypesHeading2, setPartnersTypesHeading2] = useState('');
+  const [partnersStatsTagline, setPartnersStatsTagline] = useState('');
+  const [partnersStatsHeading, setPartnersStatsHeading] = useState('');
+  const [partnerTypes, setPartnerTypes] = useState<Array<{ title: string; description: string; benefits: string[] }>>([]);
+  const [partnersCtaTagline, setPartnersCtaTagline] = useState('');
+  const [partnersCtaHeading1, setPartnersCtaHeading1] = useState('');
+  const [partnersCtaHeading2, setPartnersCtaHeading2] = useState('');
+  const [partnersCtaDescription, setPartnersCtaDescription] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'footer'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -767,6 +781,20 @@ function SiteSettingsPage() {
       setImpactCtaBtn1Visible(getSetting('impact_cta_btn1_visible') !== 'false');
       setImpactCtaBtn2Text(getSetting('impact_cta_btn2_text'));
       setImpactCtaBtn2Visible(getSetting('impact_cta_btn2_visible') !== 'false');
+      setPartnersHeroTagline(getSetting('partners_hero_tagline'));
+      setPartnersHeroHeading1(getSetting('partners_hero_heading_1'));
+      setPartnersHeroHeading2(getSetting('partners_hero_heading_2'));
+      setPartnersHeroDescription(getSetting('partners_hero_description'));
+      setPartnersTypesTagline(getSetting('partners_types_tagline'));
+      setPartnersTypesHeading1(getSetting('partners_types_heading_1'));
+      setPartnersTypesHeading2(getSetting('partners_types_heading_2'));
+      setPartnersStatsTagline(getSetting('partners_stats_tagline'));
+      setPartnersStatsHeading(getSetting('partners_stats_heading'));
+      try { setPartnerTypes(JSON.parse(getSetting('partners_partner_types'))); } catch { setPartnerTypes([]); }
+      setPartnersCtaTagline(getSetting('partners_cta_tagline'));
+      setPartnersCtaHeading1(getSetting('partners_cta_heading_1'));
+      setPartnersCtaHeading2(getSetting('partners_cta_heading_2'));
+      setPartnersCtaDescription(getSetting('partners_cta_description'));
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -801,6 +829,8 @@ function SiteSettingsPage() {
           { key: 'stories' as const, label: 'Student Stories', desc: 'Student stories page hero & content' },
           { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats, stories & CTA' },
           { key: 'gallery' as const, label: 'Gallery', desc: 'Photo gallery page hero & content' },
+          { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats & content' },
+          { key: 'partners' as const, label: 'Partners', desc: 'Partners page hero, ways to partner & CTA' },
           { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
         ].map((tab) => (
           <button
@@ -2166,6 +2196,348 @@ function SiteSettingsPage() {
             <h2 className="nexus-serif text-lg font-semibold mb-1">Photo Gallery</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove photos displayed on the Gallery page.</p>
             <PhotoGalleryManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
+      {activeTab === 'impact' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
+                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
+                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
+                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof that practical skills..." />
+                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Impact Stats</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats displayed on the Impact page.</p>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
+                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
+                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold">Stats</h3>
+              <Button variant="outline" size="sm" onClick={() => setImpactStats([...impactStats, { value: 0, suffix: '', label: '' }])}>
+                + Add Stat
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Each stat shows an animated count-up on the Impact page.</p>
+            <div className="space-y-3">
+              {impactStats.map((stat, i) => (
+                <div key={i} className="grid grid-cols-[1fr_100px_1fr_auto] gap-3 items-center">
+                  <Input type="number" value={stat.value} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], value: Number(e.target.value) || 0 }; setImpactStats(next); }} placeholder="e.g. 1200" />
+                  <Input value={stat.suffix} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], suffix: e.target.value }; setImpactStats(next); }} placeholder="+  %" />
+                  <Input value={stat.label} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], label: e.target.value }; setImpactStats(next); }} placeholder="e.g. Total Graduates" />
+                  <button onClick={() => setImpactStats(impactStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('impact_stats', JSON.stringify(impactStats))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+            </Button>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Graduate Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading and intro text above the graduate story cards on the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
+                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
+                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a real person..." />
+                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call To Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation call-to-action banner at the bottom of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
+                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
+                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PARTNERS TAB ═══════════════════ */}
+      {activeTab === 'partners' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Partners page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroTagline} onChange={(e) => setPartnersHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
+                  <Button onClick={() => save('partners_hero_tagline', partnersHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroHeading1} onChange={(e) => setPartnersHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Together We Build" />
+                  <Button onClick={() => save('partners_hero_heading_1', partnersHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroHeading2} onChange={(e) => setPartnersHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Stronger Futures" />
+                  <Button onClick={() => save('partners_hero_heading_2', partnersHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroDescription} onChange={(e) => setPartnersHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our partners make transformation possible..." />
+                  <Button onClick={() => save('partners_hero_description', partnersHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ways to Partner Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Ways to Partner Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading and intro text above the partner type cards.</p>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesTagline} onChange={(e) => setPartnersTypesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Ways to Partner" />
+                  <Button onClick={() => save('partners_types_tagline', partnersTypesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesHeading1} onChange={(e) => setPartnersTypesHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Find Your Way" />
+                  <Button onClick={() => save('partners_types_heading_1', partnersTypesHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesHeading2} onChange={(e) => setPartnersTypesHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Make an Impact" />
+                  <Button onClick={() => save('partners_types_heading_2', partnersTypesHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold">Partner Type Cards</h3>
+              <Button variant="outline" size="sm" onClick={() => setPartnerTypes([...partnerTypes, { title: '', description: '', benefits: [] }])}>
+                + Add Partner Type
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The cards under "Ways to Partner". Each has a title, description and benefit list.</p>
+            <div className="space-y-6">
+              {partnerTypes.map((pt, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Partner Type {i + 1}</span>
+                    <button onClick={() => setPartnerTypes(partnerTypes.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label>
+                    <Input value={pt.title} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], title: e.target.value }; setPartnerTypes(next); }} placeholder="e.g. Corporate Sponsors" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                    <Input value={pt.description} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], description: e.target.value }; setPartnerTypes(next); }} placeholder="Describe this partner type" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Benefits (one per line)</label>
+                    <textarea value={(pt.benefits || []).join('\n')} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], benefits: e.target.value.split('\n').filter((b) => b.trim() !== '') }; setPartnerTypes(next); }} placeholder={'Tax-deductible contributions\nBrand visibility'} rows={3} className="w-full rounded-lg border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(160_43%_40%)]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('partners_partner_types', JSON.stringify(partnerTypes))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Partner Types'}
+            </Button>
+          </div>
+
+          {/* Current Partners Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Current Partners Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading above the grid of current partner logos.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsTagline} onChange={(e) => setPartnersStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Network" />
+                  <Button onClick={() => save('partners_stats_tagline', partnersStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsHeading} onChange={(e) => setPartnersStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Current Partners" />
+                  <Button onClick={() => save('partners_stats_heading', partnersStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call To Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The banner at the bottom of the Partners page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaTagline} onChange={(e) => setPartnersCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Become a Partner" />
+                  <Button onClick={() => save('partners_cta_tagline', partnersCtaTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaHeading1} onChange={(e) => setPartnersCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Ready to Change Lives" />
+                  <Button onClick={() => save('partners_cta_heading_1', partnersCtaHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaHeading2} onChange={(e) => setPartnersCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Together?" />
+                  <Button onClick={() => save('partners_cta_heading_2', partnersCtaHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaDescription} onChange={(e) => setPartnersCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Whether you represent a corporation, an NGO..." />
+                  <Button onClick={() => save('partners_cta_description', partnersCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
