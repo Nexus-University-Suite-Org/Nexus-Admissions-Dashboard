@@ -649,6 +649,7 @@ function SiteSettingsPage() {
   const [partnersStatsTagline, setPartnersStatsTagline] = useState('');
   const [partnersStatsHeading, setPartnersStatsHeading] = useState('');
   const [partnerTypes, setPartnerTypes] = useState<Array<{ title: string; description: string; benefits: string[] }>>([]);
+  const [partnersStats, setPartnersStats] = useState<Array<{ value: string; label: string }>>([]);
   const [partnersCtaTagline, setPartnersCtaTagline] = useState('');
   const [partnersCtaHeading1, setPartnersCtaHeading1] = useState('');
   const [partnersCtaHeading2, setPartnersCtaHeading2] = useState('');
@@ -790,6 +791,7 @@ function SiteSettingsPage() {
       setPartnersTypesHeading2(getSetting('partners_types_heading_2'));
       setPartnersStatsTagline(getSetting('partners_stats_tagline'));
       setPartnersStatsHeading(getSetting('partners_stats_heading'));
+      try { setPartnersStats(JSON.parse(getSetting('partners_stats') || '[]')); } catch { setPartnersStats([]); }
       try { setPartnerTypes(JSON.parse(getSetting('partners_partner_types'))); } catch { setPartnerTypes([]); }
       setPartnersCtaTagline(getSetting('partners_cta_tagline'));
       setPartnersCtaHeading1(getSetting('partners_cta_heading_1'));
@@ -2494,6 +2496,25 @@ function SiteSettingsPage() {
                 </div>
               </div>
             </div>
+            <div className="flex items-center justify-between mb-1 mt-6">
+              <h3 className="text-sm font-semibold">Stats</h3>
+              <Button variant="outline" size="sm" onClick={() => setPartnersStats([...partnersStats, { value: '', label: '' }])}>
+                + Add Stat
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats at the top of the Partners page (e.g. Active Partners, Funds Mobilised).</p>
+            <div className="space-y-3">
+              {partnersStats.map((stat, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-center">
+                  <Input value={stat.value} onChange={(e) => { const next = [...partnersStats]; next[i] = { ...next[i], value: e.target.value }; setPartnersStats(next); }} placeholder="e.g. $240K" />
+                  <Input value={stat.label} onChange={(e) => { const next = [...partnersStats]; next[i] = { ...next[i], label: e.target.value }; setPartnersStats(next); }} placeholder="e.g. Funds Mobilised" />
+                  <button onClick={() => setPartnersStats(partnersStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('partners_stats', JSON.stringify(partnersStats))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+            </Button>
           </div>
 
           {/* CTA Section */}
