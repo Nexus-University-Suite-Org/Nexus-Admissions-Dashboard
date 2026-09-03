@@ -1063,37 +1063,42 @@ function SiteSettingsPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-[hsl(var(--border))]">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.25)] p-2">
         {[
-          { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
-          { key: 'splash' as const, label: 'Splash Screen', desc: 'Logo, name & motto on loading screen' },
-          { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
-          { key: 'about' as const, label: 'About', desc: 'About page content' },
-          { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
-          { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
-          { key: 'stories' as const, label: 'Student Stories', desc: 'Student stories page hero & content' },
-          { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats, stories & CTA' },
-          { key: 'gallery' as const, label: 'Gallery', desc: 'Photo gallery page hero & content' },
-          { key: 'impact' as const, label: 'Impact', desc: 'Impact page hero, stats & content' },
-          { key: 'partners' as const, label: 'Partners', desc: 'Partners page hero, ways to partner & CTA' },
-          { key: 'donate' as const, label: 'Donate', desc: 'Donate page hero & content' },
-          { key: 'contact' as const, label: 'Contact', desc: 'Contact page hero image' },
-          { key: 'research' as const, label: 'Research', desc: 'Research page hero image' },
-          { key: 'students' as const, label: 'Students', desc: 'Students page hero image' },
-          { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab.key
-                ? 'border-[hsl(160_43%_40%)] text-[hsl(160_43%_40%)]'
-                : 'border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+          { key: 'general' as const, label: 'General', icon: Settings },
+          { key: 'splash' as const, label: 'Splash Screen', icon: Image },
+          { key: 'home' as const, label: 'Home', icon: LayoutDashboard },
+          { key: 'about' as const, label: 'About', icon: BookOpen },
+          { key: 'news' as const, label: 'News & Events', icon: Bell },
+          { key: 'programs' as const, label: 'Programs', icon: GraduationCap },
+          { key: 'stories' as const, label: 'Student Stories', icon: UsersRound },
+          { key: 'impact' as const, label: 'Impact', icon: BarChart3 },
+          { key: 'gallery' as const, label: 'Gallery', icon: Image },
+          { key: 'partners' as const, label: 'Partners', icon: ShieldCheck },
+          { key: 'donate' as const, label: 'Donate', icon: Sparkles },
+          { key: 'contact' as const, label: 'Contact', icon: FileText },
+          { key: 'research' as const, label: 'Research', icon: Search },
+          { key: 'students' as const, label: 'Students', icon: UserRound },
+          { key: 'footer' as const, label: 'Footer', icon: ClipboardList },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              aria-selected={isActive}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all sm:text-sm ${
+                isActive
+                  ? 'bg-[hsl(160_43%_40%)] text-white shadow-sm'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]'
+              }`}
+            >
+              <Icon size={15} className={isActive ? 'text-white' : 'text-[hsl(var(--muted-foreground))]'} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ═══════════════════ GENERAL TAB ═══════════════════ */}
