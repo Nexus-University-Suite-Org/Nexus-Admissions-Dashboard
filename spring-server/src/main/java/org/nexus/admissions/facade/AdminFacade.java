@@ -215,4 +215,60 @@ public class AdminFacade {
     public Map<String, Object> updateSiteSetting(String settingKey, String settingValue) {
         return napClient.updateSiteSetting(settingKey, settingValue);
     }
+
+    @Transactional
+    public List<Map<String, Object>> getStudentStoriesAdmin() {
+        return napClient.fetchStudentStoriesAdmin();
+    }
+
+    @Transactional
+    public Map<String, Object> createStudentStory(Map<String, Object> body) {
+        return napClient.createStudentStory(body);
+    }
+
+    @Transactional
+    public Map<String, Object> updateStudentStory(Long id, Map<String, Object> body) {
+        return napClient.updateStudentStory(id, body);
+    }
+
+    @Transactional
+    public void deleteStudentStory(Long id) {
+        napClient.deleteStudentStory(id);
+    }
+
+    @Transactional
+    public List<Map<String, Object>> getGalleryAdmin() {
+        return napClient.fetchGalleryAdmin();
+    }
+
+    @Transactional
+    public Map<String, Object> createGalleryItem(Map<String, Object> body) {
+        return napClient.createGalleryItem(body);
+    }
+
+    @Transactional
+    public Map<String, Object> updateGalleryItem(Long id, Map<String, Object> body) {
+        return napClient.updateGalleryItem(id, body);
+    }
+
+    @Transactional
+    public void deleteGalleryItem(Long id) {
+        napClient.deleteGalleryItem(id);
+    }
+
+    public List<Map<String, Object>> fetchPartners() {
+        return napClient.fetchPartners();
+    }
+
+    public Map<String, Object> createPartner(Map<String, Object> body) {
+        return napClient.createPartner(body);
+    }
+
+    public Map<String, Object> updatePartner(Long id, Map<String, Object> body) {
+        return napClient.updatePartner(id, body);
+    }
+
+    public void deletePartner(Long id) {
+        napClient.deletePartner(id);
+    }
 }

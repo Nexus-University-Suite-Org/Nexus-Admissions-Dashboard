@@ -17,6 +17,7 @@ import {
   ExternalLink,
   FileCheck2,
   Image,
+  ImagePlus,
   FileText,
   Filter,
   GraduationCap,
@@ -24,12 +25,14 @@ import {
   Loader2,
   LogOut,
   Menu,
+  Pencil,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
   UserRound,
   UsersRound,
   X,
@@ -65,6 +68,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import './index.css';
 
+const NAD_API = 'http://localhost:8083';
 const queryClient = new QueryClient();
 setBaseUrl('http://localhost:8083');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
@@ -237,6 +241,136 @@ function AuthGate({ children }: { children: ReactNode }) {
   return <Shell identity={me.data}>{children}</Shell>;
 }
 
+function PartnersManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: partners = [], isLoading } = useQuery({
+    queryKey: ['admin-partners'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/partners`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/partners/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-partners'] }),
+  });
+
+  if (showForm) {
+    return <PartnerForm partner={editing} onClose={() => { setShowForm(false); setEditing(null); }} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Partner</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : partners.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No partners yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {partners.map((p) => (
+            <div key={p.id} className="flex items-center gap-4 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted)/.3)] transition-colors">
+              {p.logoUrl && <img src={p.logoUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{p.name || 'Unnamed'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{p.description || 'No description'}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(p); setShowForm(true); }}><Pencil size={14} /></Button>
+                <Button variant="ghost" size="sm" onClick={() => { if (confirm('Delete this partner?')) deleteMutation.mutate(Number(p.id)); }} className="text-red-500 hover:text-red-600"><Trash2 size={14} /></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartnerForm({ partner, onClose }: { partner: Record<string, string> | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    name: partner?.name || '',
+    description: partner?.description || '',
+    logoUrl: partner?.logoUrl || '',
+    websiteUrl: partner?.websiteUrl || '',
+    tenantId: partner?.tenantId || '1',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
+      }
+    } finally { setUploading(false); }
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      if (partner?.id) return customFetch(`${NAD_API}/api/v1/admin/partners/${partner.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      return customFetch(`${NAD_API}/api/v1/admin/partners`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-partners'] });
+      onClose();
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 mb-4">
+        <Button variant="ghost" size="sm" onClick={onClose}><ArrowLeft size={16} /></Button>
+        <h3 className="text-sm font-semibold">{partner ? 'Edit Partner' : 'Add Partner'}</h3>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Name *</label>
+          <Input value={form.name} onChange={(e) => setForm(prev => ({ ...prev, name: e.target.value }))} placeholder="e.g. Ministry of Education" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Website URL</label>
+          <Input value={form.websiteUrl} onChange={(e) => setForm(prev => ({ ...prev, websiteUrl: e.target.value }))} placeholder="e.g. https://example.com" />
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+        <textarea value={form.description} onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="Brief description of the partner..." />
+      </div>
+      <div>
+        <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo</label>
+        <div className="flex gap-4 items-start">
+          <label className="flex flex-col items-center justify-center gap-2 w-32 h-32 border-2 border-dashed border-[hsl(var(--border))] rounded-xl cursor-pointer hover:border-[hsl(var(--primary)/.5)] hover:bg-[hsl(var(--muted)/.2)] transition-all">
+            {form.logoUrl ? (
+              <img src={form.logoUrl} alt="Logo preview" className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <>
+                <Image size={24} className="text-[hsl(var(--muted-foreground))]" />
+                <span className="text-[10px] text-[hsl(var(--muted-foreground))] text-center px-1">{uploading ? 'Uploading...' : 'Click to upload'}</span>
+              </>
+            )}
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleUpload(e.target.files[0]); }} />
+          </label>
+          {form.logoUrl && (
+            <button onClick={() => setForm(prev => ({ ...prev, logoUrl: '' }))} className="text-xs text-red-500 hover:text-red-600 mt-1">Remove</button>
+          )}
+        </div>
+      </div>
+      <Button onClick={() => saveMutation.mutate(form)} disabled={!form.name || saveMutation.isPending}>
+        {saveMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : partner ? 'Update Partner' : 'Create Partner'}
+      </Button>
+    </div>
+  );
+}
+
 function LoginPage() {
   const [, setLocation] = useLocation();
   const login = useAdminLogin();
@@ -376,6 +510,49 @@ function SubjectTable({ label, json }: { label: string; json?: string | null }) 
   try { subjects = JSON.parse(json || '[]'); } catch { /* ignore */ }
   const rows = subjects.filter(s => s.subject && s.subject.trim());
   return <div className="sm:col-span-2 lg:col-span-3"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p>{rows.length > 0 ? <div className="mt-2 overflow-hidden rounded-lg border border-[hsl(var(--border))]"><table className="w-full text-xs"><thead><tr className="bg-[hsl(var(--muted)/.4)]"><th className="px-3 py-2 text-left font-bold">Subject</th><th className="px-3 py-2 text-left font-bold">Grade</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{rows.map((s, i) => <tr key={i} className="hover:bg-[hsl(var(--muted)/.3)]"><td className="px-3 py-2">{s.subject}</td><td className="px-3 py-2 font-semibold">{s.grade}</td></tr>)}</tbody></table></div> : <p className="mt-1.5 text-sm">—</p>}</div>;
+}
+
+function HeroImageField({ label, hint, value, onChange, onSave, saving }: { label: string; hint?: string; value: string; onChange: (url: string) => void; onSave: (url: string) => void; saving: boolean }) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const upload = async (file: File) => {
+    if (!file) return;
+    setUploading(true);
+    setError('');
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        const url = data.url || data.fileUrl || '';
+        if (url) { onChange(url); setError(''); }
+        else { setError('Upload succeeded but returned no image URL.'); }
+      } else {
+        setError(`Upload failed (HTTP ${res.status}).`);
+      }
+    } catch {
+      setError('Could not reach the upload server. Please try again.');
+    } finally { setUploading(false); }
+  };
+  return <div>
+    <div className="flex items-center justify-between mb-1">
+      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))]">{label}</label>
+      {value && <span className="text-[10px] text-[hsl(160_43%_25%)] bg-[hsl(160_35%_85%)] px-2 py-0.5 rounded-full">Uploaded ✓</span>}
+    </div>
+    {hint && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-2">{hint}</p>}
+    {value && <img src={value} alt={label} className="w-full max-h-44 rounded-lg object-cover mb-2 border border-[hsl(var(--border))]" />}
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] hover:bg-[hsl(var(--muted))] cursor-pointer transition-colors text-sm font-medium">
+        <Image size={14} />
+        {uploading ? 'Uploading…' : 'Choose Hero Image'}
+        <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }} />
+      </label>
+      <Button onClick={() => onSave(value)} disabled={saving || !value}>{saving ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Image'}</Button>
+    </div>
+    {error && <p className="text-[11px] text-[hsl(var(--destructive))] mt-1.5">{error}</p>}
+    <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1.5">Pick an image to preview it, then click "Save Hero Image" to publish. Recommended 1920×1080 (or 1600×900) — other sizes will auto-fill the hero.</p>
+  </div>;
 }
 
 function ReviewPanel({ app }: { app: Application }) {
@@ -535,6 +712,11 @@ function SiteSettingsPage() {
   const [aboutCtaPartnerBtn, setAboutCtaPartnerBtn] = useState('');
   const [navLinks, setNavLinks] = useState<Array<{ label: string; href: string; visible: boolean }>>([]);
   const [ctaButtons, setCtaButtons] = useState<Array<{ label: string; href: string; style: string; visible: boolean }>>([]);
+  const [splashLogoUrl, setSplashLogoUrl] = useState('');
+  const [splashLogoText, setSplashLogoText] = useState('IU');
+  const [splashName, setSplashName] = useState('Institute Uganda');
+  const [splashMotto, setSplashMotto] = useState('Empowering Through Vocational Skills');
+  const [splashStatusText, setSplashStatusText] = useState('Preparing Experience');
   const [heroTagline, setHeroTagline] = useState('');
   const [heroHeading1, setHeroHeading1] = useState('');
   const [heroHeading2, setHeroHeading2] = useState('');
@@ -547,6 +729,17 @@ function SiteSettingsPage() {
   const [heroCtaLearnMore, setHeroCtaLearnMore] = useState('');
   const [heroCtaLearnMoreVisible, setHeroCtaLearnMoreVisible] = useState(true);
   const [heroStats, setHeroStats] = useState<Array<{ value: string; label: string }>>([]);
+  const [homeHeroImage, setHomeHeroImage] = useState('');
+  const [aboutHeroImage, setAboutHeroImage] = useState('');
+  const [newsHeroImage, setNewsHeroImage] = useState('');
+  const [programsHeroImage, setProgramsHeroImage] = useState('');
+  const [storiesHeroImage, setStoriesHeroImage] = useState('');
+  const [impactHeroImage, setImpactHeroImage] = useState('');
+  const [partnersHeroImage, setPartnersHeroImage] = useState('');
+  const [donateHeroImage, setDonateHeroImage] = useState('');
+  const [contactHeroImage, setContactHeroImage] = useState('');
+  const [researchHeroImage, setResearchHeroImage] = useState('');
+  const [studentsHeroImage, setStudentsHeroImage] = useState('');
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
   const [whatWeTeachHeading1, setWhatWeTeachHeading1] = useState('');
   const [whatWeTeachHeading2, setWhatWeTeachHeading2] = useState('');
@@ -595,9 +788,87 @@ function SiteSettingsPage() {
   const [progSectionTagline, setProgSectionTagline] = useState('');
   const [progSectionHeading, setProgSectionHeading] = useState('');
   const [progSectionDescription, setProgSectionDescription] = useState('');
+  const [storiesHeroTagline, setStoriesHeroTagline] = useState('');
+  const [storiesHeroHeading1, setStoriesHeroHeading1] = useState('');
+  const [storiesHeroHeading2, setStoriesHeroHeading2] = useState('');
+  const [storiesHeroDescription, setStoriesHeroDescription] = useState('');
+  const [storiesSectionTagline, setStoriesSectionTagline] = useState('');
+  const [storiesSectionHeading1, setStoriesSectionHeading1] = useState('');
+  const [storiesSectionHeading2, setStoriesSectionHeading2] = useState('');
+  const [storiesCtaTagline, setStoriesCtaTagline] = useState('');
+  const [storiesCtaHeading1, setStoriesCtaHeading1] = useState('');
+  const [storiesCtaHeading2, setStoriesCtaHeading2] = useState('');
+  const [storiesCtaDescription, setStoriesCtaDescription] = useState('');
+  const [storiesCtaBtn1Text, setStoriesCtaBtn1Text] = useState('');
+  const [storiesCtaBtn1Visible, setStoriesCtaBtn1Visible] = useState(true);
+  const [storiesCtaBtn2Text, setStoriesCtaBtn2Text] = useState('');
+  const [storiesCtaBtn2Visible, setStoriesCtaBtn2Visible] = useState(true);
+  const [galleryHeroTagline, setGalleryHeroTagline] = useState('');
+  const [galleryHeroHeading1, setGalleryHeroHeading1] = useState('');
+  const [galleryHeroHeading2, setGalleryHeroHeading2] = useState('');
+  const [galleryHeroDescription, setGalleryHeroDescription] = useState('');
+  const [impactHeroTagline, setImpactHeroTagline] = useState('');
+  const [impactHeroHeading1, setImpactHeroHeading1] = useState('');
+  const [impactHeroHeading2, setImpactHeroHeading2] = useState('');
+  const [impactHeroDescription, setImpactHeroDescription] = useState('');
+  const [impactStatsTagline, setImpactStatsTagline] = useState('');
+  const [impactStatsHeading, setImpactStatsHeading] = useState('');
+  const [impactStats, setImpactStats] = useState<{value: number; suffix: string; label: string}[]>([]);
+  const [impactStoriesTagline, setImpactStoriesTagline] = useState('');
+  const [impactStoriesHeading, setImpactStoriesHeading] = useState('');
+  const [impactStoriesDescription, setImpactStoriesDescription] = useState('');
+  const [impactCtaHeading, setImpactCtaHeading] = useState('');
+  const [impactCtaDescription, setImpactCtaDescription] = useState('');
+  const [impactCtaBtn1Text, setImpactCtaBtn1Text] = useState('');
+  const [impactCtaBtn1Visible, setImpactCtaBtn1Visible] = useState(true);
+  const [impactCtaBtn2Text, setImpactCtaBtn2Text] = useState('');
+  const [impactCtaBtn2Visible, setImpactCtaBtn2Visible] = useState(true);
+  const [partnersHeroTagline, setPartnersHeroTagline] = useState('');
+  const [partnersHeroHeading1, setPartnersHeroHeading1] = useState('');
+  const [partnersHeroHeading2, setPartnersHeroHeading2] = useState('');
+  const [partnersHeroDescription, setPartnersHeroDescription] = useState('');
+  const [partnersTypesTagline, setPartnersTypesTagline] = useState('');
+  const [partnersTypesHeading1, setPartnersTypesHeading1] = useState('');
+  const [partnersTypesHeading2, setPartnersTypesHeading2] = useState('');
+  const [partnersStatsTagline, setPartnersStatsTagline] = useState('');
+  const [partnersStatsHeading, setPartnersStatsHeading] = useState('');
+  const [partnersStatsDescription, setPartnersStatsDescription] = useState('');
+  const [partnerTypes, setPartnerTypes] = useState<Array<{ title: string; description: string; benefits: string[] }>>([]);
+  const [partnersStats, setPartnersStats] = useState<Array<{ value: string; label: string }>>([]);
+  const [partnersCtaTagline, setPartnersCtaTagline] = useState('');
+  const [partnersCtaHeading1, setPartnersCtaHeading1] = useState('');
+  const [partnersCtaHeading2, setPartnersCtaHeading2] = useState('');
+  const [partnersCtaDescription, setPartnersCtaDescription] = useState('');
+  const [donateHeroTagline, setDonateHeroTagline] = useState('');
+  const [donateHeroHeading1, setDonateHeroHeading1] = useState('');
+  const [donateHeroHeading2, setDonateHeroHeading2] = useState('');
+  const [donateHeroDescription, setDonateHeroDescription] = useState('');
+  const [donateTiersTagline, setDonateTiersTagline] = useState('');
+  const [donateTiersHeading, setDonateTiersHeading] = useState('');
+  const [donateTiersDescription, setDonateTiersDescription] = useState('');
+  const [donateSponsorTagline, setDonateSponsorTagline] = useState('');
+  const [donateSponsorHeading, setDonateSponsorHeading] = useState('');
+  const [donateSponsorDescription, setDonateSponsorDescription] = useState('');
+  const [donateSponsorBenefits, setDonateSponsorBenefits] = useState<string[]>([]);
+  const [donateSponsorBtnText, setDonateSponsorBtnText] = useState('');
+  const [donateSponsorBtnVisible, setDonateSponsorBtnVisible] = useState(true);
+  const [donateFaqTagline, setDonateFaqTagline] = useState('');
+  const [donateFaqHeading, setDonateFaqHeading] = useState('');
+  const [donateFaqs, setDonateFaqs] = useState<Array<{ q: string; a: string }>>([]);
+  const [donatePageTiers, setDonatePageTiers] = useState<Array<{ amount: string; usd: number; label: string; description: string; impact: string; featured?: boolean }>>([]);
+  const [donateStatAmount, setDonateStatAmount] = useState('');
+  const [donateStatPeriod, setDonateStatPeriod] = useState('');
+  const [donateStatText, setDonateStatText] = useState('');
+  const [donateStatProgress, setDonateStatProgress] = useState('');
+  const [donateStatProgressText, setDonateStatProgressText] = useState('');
+  const [donateStatVisible, setDonateStatVisible] = useState(true);
+  const [donateNeedLabel, setDonateNeedLabel] = useState('');
+  const [donateNeedHeading, setDonateNeedHeading] = useState('');
+  const [donateNeedText, setDonateNeedText] = useState('');
+  const [donateNeedVisible, setDonateNeedVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
-  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'footer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'contact' | 'research' | 'students' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
     if (settings.length > 0 && !loaded) {
@@ -623,6 +894,11 @@ function SiteSettingsPage() {
       setAboutCtaPartnerBtn(getSetting('about_cta_partner_btn'));
       try { setNavLinks(JSON.parse(getSetting('nav_links'))); } catch { setNavLinks([]); }
       try { setCtaButtons(JSON.parse(getSetting('cta_buttons'))); } catch { setCtaButtons([]); }
+      setSplashLogoUrl(getSetting('splash_logo_url'));
+      setSplashLogoText(getSetting('splash_logo_text') || 'IU');
+      setSplashName(getSetting('splash_name') || 'Institute Uganda');
+      setSplashMotto(getSetting('splash_motto') || 'Empowering Through Vocational Skills');
+      setSplashStatusText(getSetting('splash_status_text') || 'Preparing Experience');
       setHeroTagline(getSetting('hero_tagline'));
       setHeroHeading1(getSetting('hero_heading_1'));
       setHeroHeading2(getSetting('hero_heading_2'));
@@ -635,6 +911,17 @@ function SiteSettingsPage() {
       setHeroCtaLearnMore(getSetting('hero_cta_learn_more'));
       setHeroCtaLearnMoreVisible(getSetting('hero_cta_learn_more_visible') !== 'false');
       try { setHeroStats(JSON.parse(getSetting('hero_stats'))); } catch { setHeroStats([]); }
+      setHomeHeroImage(getSetting('home_hero_image'));
+      setAboutHeroImage(getSetting('about_hero_image'));
+      setNewsHeroImage(getSetting('news_hero_image'));
+      setProgramsHeroImage(getSetting('programs_hero_image'));
+      setStoriesHeroImage(getSetting('stories_hero_image'));
+      setImpactHeroImage(getSetting('impact_hero_image'));
+      setPartnersHeroImage(getSetting('partners_hero_image'));
+      setDonateHeroImage(getSetting('donate_hero_image'));
+      setContactHeroImage(getSetting('contact_hero_image'));
+      setResearchHeroImage(getSetting('research_hero_image'));
+      setStudentsHeroImage(getSetting('students_hero_image'));
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
       setWhatWeTeachHeading1(getSetting('what_we_teach_heading_1'));
       setWhatWeTeachHeading2(getSetting('what_we_teach_heading_2'));
@@ -683,6 +970,84 @@ function SiteSettingsPage() {
       setProgSectionTagline(getSetting('programs_section_tagline'));
       setProgSectionHeading(getSetting('programs_section_heading'));
       setProgSectionDescription(getSetting('programs_section_description'));
+      setStoriesHeroTagline(getSetting('stories_hero_tagline'));
+      setStoriesHeroHeading1(getSetting('stories_hero_heading_1'));
+      setStoriesHeroHeading2(getSetting('stories_hero_heading_2'));
+      setStoriesHeroDescription(getSetting('stories_hero_description'));
+      setStoriesSectionTagline(getSetting('stories_section_tagline'));
+      setStoriesSectionHeading1(getSetting('stories_section_heading_1'));
+      setStoriesSectionHeading2(getSetting('stories_section_heading_2'));
+      setStoriesCtaTagline(getSetting('stories_cta_tagline'));
+      setStoriesCtaHeading1(getSetting('stories_cta_heading_1'));
+      setStoriesCtaHeading2(getSetting('stories_cta_heading_2'));
+      setStoriesCtaDescription(getSetting('stories_cta_description'));
+      setStoriesCtaBtn1Text(getSetting('stories_cta_btn1_text'));
+      setStoriesCtaBtn1Visible(getSetting('stories_cta_btn1_visible') !== 'false');
+      setStoriesCtaBtn2Text(getSetting('stories_cta_btn2_text'));
+      setStoriesCtaBtn2Visible(getSetting('stories_cta_btn2_visible') !== 'false');
+      setGalleryHeroTagline(getSetting('gallery_hero_tagline'));
+      setGalleryHeroHeading1(getSetting('gallery_hero_heading_1'));
+      setGalleryHeroHeading2(getSetting('gallery_hero_heading_2'));
+      setGalleryHeroDescription(getSetting('gallery_hero_description'));
+      setImpactHeroTagline(getSetting('impact_hero_tagline'));
+      setImpactHeroHeading1(getSetting('impact_hero_heading_1'));
+      setImpactHeroHeading2(getSetting('impact_hero_heading_2'));
+      setImpactHeroDescription(getSetting('impact_hero_description'));
+      setImpactStatsTagline(getSetting('impact_stats_tagline'));
+      setImpactStatsHeading(getSetting('impact_stats_heading'));
+      try { setImpactStats(JSON.parse(getSetting('impact_stats') || '[]')); } catch { setImpactStats([]); }
+      setImpactStoriesTagline(getSetting('impact_stories_tagline'));
+      setImpactStoriesHeading(getSetting('impact_stories_heading'));
+      setImpactStoriesDescription(getSetting('impact_stories_description'));
+      setImpactCtaHeading(getSetting('impact_cta_heading'));
+      setImpactCtaDescription(getSetting('impact_cta_description'));
+      setImpactCtaBtn1Text(getSetting('impact_cta_btn1_text'));
+      setImpactCtaBtn1Visible(getSetting('impact_cta_btn1_visible') !== 'false');
+      setImpactCtaBtn2Text(getSetting('impact_cta_btn2_text'));
+      setImpactCtaBtn2Visible(getSetting('impact_cta_btn2_visible') !== 'false');
+      setPartnersHeroTagline(getSetting('partners_hero_tagline'));
+      setPartnersHeroHeading1(getSetting('partners_hero_heading_1'));
+      setPartnersHeroHeading2(getSetting('partners_hero_heading_2'));
+      setPartnersHeroDescription(getSetting('partners_hero_description'));
+      setPartnersTypesTagline(getSetting('partners_types_tagline'));
+      setPartnersTypesHeading1(getSetting('partners_types_heading_1'));
+      setPartnersTypesHeading2(getSetting('partners_types_heading_2'));
+      setPartnersStatsTagline(getSetting('partners_stats_tagline'));
+      setPartnersStatsHeading(getSetting('partners_stats_heading'));
+      setPartnersStatsDescription(getSetting('partners_stats_description'));
+      try { setPartnersStats(JSON.parse(getSetting('partners_stats') || '[]')); } catch { setPartnersStats([]); }
+      try { setPartnerTypes(JSON.parse(getSetting('partners_partner_types'))); } catch { setPartnerTypes([]); }
+      setPartnersCtaTagline(getSetting('partners_cta_tagline'));
+      setPartnersCtaHeading1(getSetting('partners_cta_heading_1'));
+      setPartnersCtaHeading2(getSetting('partners_cta_heading_2'));
+      setPartnersCtaDescription(getSetting('partners_cta_description'));
+      setDonateHeroTagline(getSetting('donate_hero_tagline'));
+      setDonateHeroHeading1(getSetting('donate_hero_heading_1'));
+      setDonateHeroHeading2(getSetting('donate_hero_heading_2'));
+      setDonateHeroDescription(getSetting('donate_hero_description'));
+      setDonateTiersTagline(getSetting('donate_tiers_tagline'));
+      setDonateTiersHeading(getSetting('donate_tiers_heading'));
+      setDonateTiersDescription(getSetting('donate_tiers_description'));
+      setDonateSponsorTagline(getSetting('donate_sponsor_tagline'));
+      setDonateSponsorHeading(getSetting('donate_sponsor_heading'));
+      setDonateSponsorDescription(getSetting('donate_sponsor_description'));
+      try { setDonateSponsorBenefits(JSON.parse(getSetting('donate_sponsor_benefits'))); } catch { setDonateSponsorBenefits([]); }
+      setDonateSponsorBtnText(getSetting('donate_sponsor_btn_text'));
+      setDonateSponsorBtnVisible(getSetting('donate_sponsor_btn_visible') !== 'false');
+      setDonateFaqTagline(getSetting('donate_faq_tagline'));
+      setDonateFaqHeading(getSetting('donate_faq_heading'));
+      try { setDonateFaqs(JSON.parse(getSetting('donate_faqs'))); } catch { setDonateFaqs([]); }
+      try { setDonatePageTiers(JSON.parse(getSetting('donate_page_tiers') || '[]')); } catch { setDonatePageTiers([]); }
+      setDonateStatAmount(getSetting('donate_stat_amount'));
+      setDonateStatPeriod(getSetting('donate_stat_period'));
+      setDonateStatText(getSetting('donate_stat_text'));
+      setDonateStatProgress(getSetting('donate_stat_progress'));
+      setDonateStatProgressText(getSetting('donate_stat_progress_text'));
+      setDonateStatVisible(getSetting('donate_stat_visible') !== 'false');
+      setDonateNeedLabel(getSetting('donate_need_label'));
+      setDonateNeedHeading(getSetting('donate_need_heading'));
+      setDonateNeedText(getSetting('donate_need_text'));
+      setDonateNeedVisible(getSetting('donate_need_visible') !== 'false');
       setLoaded(true);
     }
   }, [settings, loaded]);
@@ -706,27 +1071,42 @@ function SiteSettingsPage() {
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-[hsl(var(--border))]">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.25)] p-2">
         {[
-          { key: 'general' as const, label: 'General', desc: 'Portal name, navigation, CTA buttons' },
-          { key: 'home' as const, label: 'Home', desc: 'Hero, programs, story, donate sections' },
-          { key: 'about' as const, label: 'About', desc: 'About page content' },
-          { key: 'news' as const, label: 'News & Events', desc: 'News page hero & events headings' },
-          { key: 'programs' as const, label: 'Programs', desc: 'Programs page hero & content' },
-          { key: 'footer' as const, label: 'Footer', desc: 'Footer contact & mission' },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              activeTab === tab.key
-                ? 'border-[hsl(160_43%_40%)] text-[hsl(160_43%_40%)]'
-                : 'border-transparent text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+          { key: 'general' as const, label: 'General', icon: Settings },
+          { key: 'splash' as const, label: 'Splash Screen', icon: Image },
+          { key: 'home' as const, label: 'Home', icon: LayoutDashboard },
+          { key: 'about' as const, label: 'About', icon: BookOpen },
+          { key: 'news' as const, label: 'News & Events', icon: Bell },
+          { key: 'programs' as const, label: 'Programs', icon: GraduationCap },
+          { key: 'stories' as const, label: 'Student Stories', icon: UsersRound },
+          { key: 'impact' as const, label: 'Impact', icon: BarChart3 },
+          { key: 'gallery' as const, label: 'Gallery', icon: Image },
+          { key: 'partners' as const, label: 'Partners', icon: ShieldCheck },
+          { key: 'donate' as const, label: 'Donate', icon: Sparkles },
+          { key: 'contact' as const, label: 'Contact', icon: FileText },
+          { key: 'research' as const, label: 'Research', icon: Search },
+          { key: 'students' as const, label: 'Students', icon: UserRound },
+          { key: 'footer' as const, label: 'Footer', icon: ClipboardList },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              aria-selected={isActive}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all sm:text-sm ${
+                isActive
+                  ? 'bg-[hsl(160_43%_40%)] text-white shadow-sm'
+                  : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]'
+              }`}
+            >
+              <Icon size={15} className={isActive ? 'text-white' : 'text-[hsl(var(--muted-foreground))]'} />
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* ═══════════════════ GENERAL TAB ═══════════════════ */}
@@ -802,9 +1182,104 @@ function SiteSettingsPage() {
         </div>
       )}
 
+      {/* ═══════════════════ SPLASH SCREEN TAB ═══════════════════ */}
+      {activeTab === 'splash' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Splash Screen</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Configure the logo, name, and motto shown on the loading screen.</p>
+
+            {/* Logo Preview */}
+            <div className="flex items-center gap-6 mb-6 p-4 rounded-xl bg-[hsl(var(--muted)/.4)]">
+              <div className="w-20 h-20 rounded-full bg-[hsl(var(--primary))] flex items-center justify-center overflow-hidden shrink-0">
+                {splashLogoUrl ? (
+                  <img src={splashLogoUrl} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-xl font-bold text-[hsl(var(--primary-foreground))]">{splashLogoText || 'IU'}</span>
+                )}
+              </div>
+              <div>
+                <p className="font-heading text-xl font-light uppercase">{splashName || 'Institute Uganda'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{splashMotto || 'Empowering Through Vocational Skills'}</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Image</label>
+                {splashLogoUrl && <img src={splashLogoUrl} alt="Logo" className="w-16 h-16 rounded-lg object-cover mb-2" />}
+                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] hover:bg-[hsl(var(--muted))] cursor-pointer transition-colors text-sm font-medium">
+                  <Image size={14} />
+                  Choose Logo Image
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    try {
+                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      if (res.ok) {
+                        const data = await res.json();
+                        const url = data.url || data.fileUrl || '';
+                        setSplashLogoUrl(url);
+                        save('splash_logo_url', url);
+                      }
+                    } catch {}
+                  }} />
+                </label>
+                {splashLogoUrl && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Uploaded ✓</p>}
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Fallback Text</label>
+                <div className="flex gap-3">
+                  <Input value={splashLogoText} onChange={(e) => setSplashLogoText(e.target.value)} className="max-w-md" placeholder="e.g. IU" />
+                  <Button onClick={() => save('splash_logo_text', splashLogoText)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Shown inside the circle when no logo image is uploaded.</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Institute Name</label>
+                <div className="flex gap-3">
+                  <Input value={splashName} onChange={(e) => setSplashName(e.target.value)} className="max-w-md" placeholder="e.g. Institute Uganda" />
+                  <Button onClick={() => save('splash_name', splashName)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Motto / Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={splashMotto} onChange={(e) => setSplashMotto(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Through Vocational Skills" />
+                  <Button onClick={() => save('splash_motto', splashMotto)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Loading Status Text</label>
+                <div className="flex gap-3">
+                  <Input value={splashStatusText} onChange={(e) => setSplashStatusText(e.target.value)} className="max-w-md" placeholder="e.g. Preparing Experience" />
+                  <Button onClick={() => save('splash_status_text', splashStatusText)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══════════════════ HOME TAB ═══════════════════ */}
       {activeTab === 'home' && (
         <div className="space-y-8 pt-4">
+      <div className="nexus-card rounded-2xl border p-6">
+        <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the homepage hero section.</p>
+        <HeroImageField label="Homepage Hero Image" value={homeHeroImage} onChange={setHomeHeroImage} onSave={(url) => save('home_hero_image', url)} saving={updateMutation.isPending} />
+      </div>
+
       <div className="nexus-card rounded-2xl border p-6">
         <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Tagline</h2>
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
@@ -1207,6 +1682,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ ABOUT TAB ═══════════════════ */}
       {activeTab === 'about' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the About page hero section.</p>
+            <HeroImageField label="About Page Hero Image" value={aboutHeroImage} onChange={setAboutHeroImage} onSave={(url) => save('about_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* About Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">About Section</h2>
@@ -1340,6 +1821,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ NEWS & EVENTS TAB ═══════════════════ */}
       {activeTab === 'news' && (
         <div className="space-y-8 pt-4">
+          {/* News Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the News & Events page hero section.</p>
+            <HeroImageField label="News Page Hero Image" value={newsHeroImage} onChange={setNewsHeroImage} onSave={(url) => save('news_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* News Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">News Hero Section</h2>
@@ -1516,6 +2003,12 @@ function SiteSettingsPage() {
       {/* ═══════════════════ PROGRAMS TAB ═══════════════════ */}
       {activeTab === 'programs' && (
         <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Programs page hero section.</p>
+            <HeroImageField label="Programs Page Hero Image" value={programsHeroImage} onChange={setProgramsHeroImage} onSave={(url) => save('programs_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
           {/* Hero Section */}
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
@@ -1597,6 +2090,1132 @@ function SiteSettingsPage() {
         </div>
       )}
 
+      {/* ═══════════════════ STUDENT STORIES TAB ═══════════════════ */}
+      {activeTab === 'stories' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Student Stories page hero section.</p>
+            <HeroImageField label="Student Stories Page Hero Image" value={storiesHeroImage} onChange={setStoriesHeroImage} onSave={(url) => save('stories_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Student Stories page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroTagline} onChange={(e) => setStoriesHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Stories" />
+                  <Button onClick={() => save('stories_hero_tagline', storiesHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroHeading1} onChange={(e) => setStoriesHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Real People." />
+                  <Button onClick={() => save('stories_hero_heading_1', storiesHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroHeading2} onChange={(e) => setStoriesHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation." />
+                  <Button onClick={() => save('stories_hero_heading_2', storiesHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={storiesHeroDescription} onChange={(e) => setStoriesHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a person..." />
+                  <Button onClick={() => save('stories_hero_description', storiesHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The section heading above the student stories list.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionTagline} onChange={(e) => setStoriesSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Their Journeys" />
+                  <Button onClick={() => save('stories_section_tagline', storiesSectionTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionHeading1} onChange={(e) => setStoriesSectionHeading1(e.target.value)} className="max-w-md" placeholder="e.g. From Hardship" />
+                  <Button onClick={() => save('stories_section_heading_1', storiesSectionHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesSectionHeading2} onChange={(e) => setStoriesSectionHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Hope" />
+                  <Button onClick={() => save('stories_section_heading_2', storiesSectionHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call to Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The bottom CTA section of the Student Stories page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaTagline} onChange={(e) => setStoriesCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Be Part of the Story" />
+                  <Button onClick={() => save('stories_cta_tagline', storiesCtaTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaHeading1} onChange={(e) => setStoriesCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next" />
+                  <Button onClick={() => save('stories_cta_heading_1', storiesCtaHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaHeading2} onChange={(e) => setStoriesCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Success Story" />
+                  <Button onClick={() => save('stories_cta_heading_2', storiesCtaHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={storiesCtaDescription} onChange={(e) => setStoriesCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Every student who walks through our doors..." />
+                  <Button onClick={() => save('stories_cta_description', storiesCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
+                  <div className="flex gap-3">
+                    <Input value={storiesCtaBtn1Text} onChange={(e) => setStoriesCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                    <button onClick={() => { setStoriesCtaBtn1Visible(!storiesCtaBtn1Visible); save('stories_cta_btn1_visible', String(!storiesCtaBtn1Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                      {storiesCtaBtn1Visible ? 'Visible' : 'Hidden'}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
+                  <div className="flex gap-3">
+                    <Input value={storiesCtaBtn2Text} onChange={(e) => setStoriesCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. View Programs" />
+                    <button onClick={() => { setStoriesCtaBtn2Visible(!storiesCtaBtn2Visible); save('stories_cta_btn2_visible', String(!storiesCtaBtn2Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                      {storiesCtaBtn2Visible ? 'Visible' : 'Hidden'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <Button onClick={() => {
+                  save('stories_cta_tagline', storiesCtaTagline);
+                  save('stories_cta_heading_1', storiesCtaHeading1);
+                  save('stories_cta_heading_2', storiesCtaHeading2);
+                  save('stories_cta_description', storiesCtaDescription);
+                  save('stories_cta_btn1_text', storiesCtaBtn1Text);
+                  save('stories_cta_btn2_text', storiesCtaBtn2Text);
+                }} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save CTA'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Manage Stories CRUD */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Stories</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove student stories displayed on the Stories page.</p>
+            <StudentStoriesManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
+      {activeTab === 'impact' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Impact page hero section.</p>
+            <HeroImageField label="Impact Page Hero Image" value={impactHeroImage} onChange={setImpactHeroImage} onSave={(url) => save('impact_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
+                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
+                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
+                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof..." />
+                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stats Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Our Impact In Numbers" section heading.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
+                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
+                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Stats</label>
+                <div className="space-y-2">
+                  {impactStats.map((stat, i) => (
+                    <div key={i} className="flex gap-2 items-center">
+                      <Input value={stat.value} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], value: Number(e.target.value)}; setImpactStats(v); }} className="w-20" placeholder="1200" />
+                      <Input value={stat.suffix} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], suffix: e.target.value}; setImpactStats(v); }} className="w-14" placeholder="+" />
+                      <Input value={stat.label} onChange={(e) => { const v = [...impactStats]; v[i] = {...v[i], label: e.target.value}; setImpactStats(v); }} className="flex-1" placeholder="Label" />
+                      <button onClick={() => { const v = impactStats.filter((_, j) => j !== i); setImpactStats(v); }} className="text-red-400 hover:text-red-600 px-1"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+                  <div className="flex gap-3">
+                    <button onClick={() => setImpactStats([...impactStats, {value: 0, suffix: '', label: ''}])} className="text-xs text-blue-600 hover:underline">+ Add Stat</button>
+                    <button onClick={() => save('impact_stats', JSON.stringify(impactStats))} className="text-xs text-green-600 hover:underline font-medium">Save Stats</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Meet Our Graduates" section.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
+                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
+                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic..." />
+                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call to Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The bottom CTA section of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
+                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
+                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} onBlur={() => save('impact_cta_btn1_text', impactCtaBtn1Text)} className="max-w-md" placeholder="e.g. Donate Now" />
+                  <button onClick={() => { setImpactCtaBtn1Visible(!impactCtaBtn1Visible); save('impact_cta_btn1_visible', String(!impactCtaBtn1Visible)); }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {impactCtaBtn1Visible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} onBlur={() => save('impact_cta_btn2_text', impactCtaBtn2Text)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                  <button onClick={() => { setImpactCtaBtn2Visible(!impactCtaBtn2Visible); save('impact_cta_btn2_visible', String(!impactCtaBtn2Visible)); }}
+                    className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {impactCtaBtn2Visible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ GALLERY TAB ═══════════════════ */}
+      {activeTab === 'gallery' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Photo Gallery page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroTagline} onChange={(e) => setGalleryHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Photo Gallery" />
+                  <Button onClick={() => save('gallery_hero_tagline', galleryHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroHeading1} onChange={(e) => setGalleryHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. See the Impact" />
+                  <Button onClick={() => save('gallery_hero_heading_1', galleryHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroHeading2} onChange={(e) => setGalleryHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. In Action" />
+                  <Button onClick={() => save('gallery_hero_heading_2', galleryHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={galleryHeroDescription} onChange={(e) => setGalleryHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Photos from our training sessions..." />
+                  <Button onClick={() => save('gallery_hero_description', galleryHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Manage Photos */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Photo Gallery</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove photos displayed on the Gallery page.</p>
+            <PhotoGalleryManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
+      {activeTab === 'impact' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
+                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
+                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
+                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof that practical skills..." />
+                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Impact Stats</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats displayed on the Impact page.</p>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
+                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
+                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold">Stats</h3>
+              <Button variant="outline" size="sm" onClick={() => setImpactStats([...impactStats, { value: 0, suffix: '', label: '' }])}>
+                + Add Stat
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Each stat shows an animated count-up on the Impact page.</p>
+            <div className="space-y-3">
+              {impactStats.map((stat, i) => (
+                <div key={i} className="grid grid-cols-[1fr_100px_1fr_auto] gap-3 items-center">
+                  <Input type="number" value={stat.value} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], value: Number(e.target.value) || 0 }; setImpactStats(next); }} placeholder="e.g. 1200" />
+                  <Input value={stat.suffix} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], suffix: e.target.value }; setImpactStats(next); }} placeholder="+  %" />
+                  <Input value={stat.label} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], label: e.target.value }; setImpactStats(next); }} placeholder="e.g. Total Graduates" />
+                  <button onClick={() => setImpactStats(impactStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('impact_stats', JSON.stringify(impactStats))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+            </Button>
+          </div>
+
+          {/* Stories Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Graduate Stories Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading and intro text above the graduate story cards on the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
+                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
+                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a real person..." />
+                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call To Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation call-to-action banner at the bottom of the Impact page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
+                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
+                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PARTNERS TAB ═══════════════════ */}
+      {activeTab === 'partners' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Partners page hero section.</p>
+            <HeroImageField label="Partners Page Hero Image" value={partnersHeroImage} onChange={setPartnersHeroImage} onSave={(url) => save('partners_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Partners page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroTagline} onChange={(e) => setPartnersHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
+                  <Button onClick={() => save('partners_hero_tagline', partnersHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroHeading1} onChange={(e) => setPartnersHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Together We Build" />
+                  <Button onClick={() => save('partners_hero_heading_1', partnersHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroHeading2} onChange={(e) => setPartnersHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Stronger Futures" />
+                  <Button onClick={() => save('partners_hero_heading_2', partnersHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersHeroDescription} onChange={(e) => setPartnersHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our partners make transformation possible..." />
+                  <Button onClick={() => save('partners_hero_description', partnersHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ways to Partner Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Ways to Partner Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading and intro text above the partner type cards.</p>
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesTagline} onChange={(e) => setPartnersTypesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Ways to Partner" />
+                  <Button onClick={() => save('partners_types_tagline', partnersTypesTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesHeading1} onChange={(e) => setPartnersTypesHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Find Your Way" />
+                  <Button onClick={() => save('partners_types_heading_1', partnersTypesHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersTypesHeading2} onChange={(e) => setPartnersTypesHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Make an Impact" />
+                  <Button onClick={() => save('partners_types_heading_2', partnersTypesHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-sm font-semibold">Partner Type Cards</h3>
+              <Button variant="outline" size="sm" onClick={() => setPartnerTypes([...partnerTypes, { title: '', description: '', benefits: [] }])}>
+                + Add Partner Type
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The cards under "Ways to Partner". Each has a title, description and benefit list.</p>
+            <div className="space-y-6">
+              {partnerTypes.map((pt, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold">Partner Type {i + 1}</span>
+                    <button onClick={() => setPartnerTypes(partnerTypes.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label>
+                    <Input value={pt.title} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], title: e.target.value }; setPartnerTypes(next); }} placeholder="e.g. Corporate Sponsors" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                    <Input value={pt.description} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], description: e.target.value }; setPartnerTypes(next); }} placeholder="Describe this partner type" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Benefits (one per line)</label>
+                    <textarea value={(pt.benefits || []).join('\n')} onChange={(e) => { const next = [...partnerTypes]; next[i] = { ...next[i], benefits: e.target.value.split('\n').filter((b) => b.trim() !== '') }; setPartnerTypes(next); }} placeholder={'Tax-deductible contributions\nBrand visibility'} rows={3} className="w-full rounded-lg border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(160_43%_40%)]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('partners_partner_types', JSON.stringify(partnerTypes))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Partner Types'}
+            </Button>
+          </div>
+
+          {/* Current Partners Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Current Partners Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading above the grid of current partner logos.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsTagline} onChange={(e) => setPartnersStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Network" />
+                  <Button onClick={() => save('partners_stats_tagline', partnersStatsTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsHeading} onChange={(e) => setPartnersStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Current Partners" />
+                  <Button onClick={() => save('partners_stats_heading', partnersStatsHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersStatsDescription} onChange={(e) => setPartnersStatsDescription(e.target.value)} className="max-w-md" placeholder="e.g. We are grateful to work with..." />
+                  <Button onClick={() => save('partners_stats_description', partnersStatsDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mb-1 mt-6">
+              <h3 className="text-sm font-semibold">Stats</h3>
+              <Button variant="outline" size="sm" onClick={() => setPartnersStats([...partnersStats, { value: '', label: '' }])}>
+                + Add Stat
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats at the top of the Partners page (e.g. Active Partners, Funds Mobilised).</p>
+            <div className="space-y-3">
+              {partnersStats.map((stat, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-center">
+                  <Input value={stat.value} onChange={(e) => { const next = [...partnersStats]; next[i] = { ...next[i], value: e.target.value }; setPartnersStats(next); }} placeholder="e.g. $240K" />
+                  <Input value={stat.label} onChange={(e) => { const next = [...partnersStats]; next[i] = { ...next[i], label: e.target.value }; setPartnersStats(next); }} placeholder="e.g. Funds Mobilised" />
+                  <button onClick={() => setPartnersStats(partnersStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('partners_stats', JSON.stringify(partnersStats))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
+            </Button>
+          </div>
+
+          {/* CTA Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Call To Action</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The banner at the bottom of the Partners page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaTagline} onChange={(e) => setPartnersCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Become a Partner" />
+                  <Button onClick={() => save('partners_cta_tagline', partnersCtaTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaHeading1} onChange={(e) => setPartnersCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Ready to Change Lives" />
+                  <Button onClick={() => save('partners_cta_heading_1', partnersCtaHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaHeading2} onChange={(e) => setPartnersCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Together?" />
+                  <Button onClick={() => save('partners_cta_heading_2', partnersCtaHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <div className="flex gap-3">
+                  <Input value={partnersCtaDescription} onChange={(e) => setPartnersCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Whether you represent a corporation, an NGO..." />
+                  <Button onClick={() => save('partners_cta_description', partnersCtaDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Manage Partners CRUD */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Manage Partners</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove partner organisations displayed on the Partners page.</p>
+            <PartnersManager />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ DONATE TAB ═══════════════════ */}
+      {activeTab === 'donate' && (
+        <div className="space-y-8 pt-4">
+          {/* Hero Image */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Donate page hero section.</p>
+            <HeroImageField label="Donate Page Hero Image" value={donateHeroImage} onChange={setDonateHeroImage} onSave={(url) => save('donate_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+          {/* Hero Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Donate page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroTagline} onChange={(e) => setDonateHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
+                  <Button onClick={() => save('donate_hero_tagline', donateHeroTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroHeading1} onChange={(e) => setDonateHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Gift Builds" />
+                  <Button onClick={() => save('donate_hero_heading_1', donateHeroHeading1)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
+                <div className="flex gap-3">
+                  <Input value={donateHeroHeading2} onChange={(e) => setDonateHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Better Tomorrow" />
+                  <Button onClick={() => save('donate_hero_heading_2', donateHeroHeading2)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateHeroDescription} onChange={(e) => setDonateHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. One donation. One student. One family lifted out of poverty..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_hero_description', donateHeroDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Tiers Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Tiers Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The heading area above the donation tier cards.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateTiersTagline} onChange={(e) => setDonateTiersTagline(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Level" />
+                  <Button onClick={() => save('donate_tiers_tagline', donateTiersTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateTiersHeading} onChange={(e) => setDonateTiersHeading(e.target.value)} className="max-w-md" placeholder="e.g. Every Amount Makes an Impact" />
+                  <Button onClick={() => save('donate_tiers_heading', donateTiersHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateTiersDescription} onChange={(e) => setDonateTiersDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. All donations go directly to student training, materials, and support..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_tiers_description', donateTiersDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Donation Tiers */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">Donation Tier Cards</h2>
+              <Button variant="outline" size="sm" onClick={() => setDonatePageTiers([...donatePageTiers, { amount: '', usd: 50, label: '', description: '', impact: '', featured: false }])}>
+                + Add Tier
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation amount cards with label, description and impact.</p>
+            <div className="space-y-3">
+              {donatePageTiers.map((tier, i) => (
+                <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-3 space-y-2">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <Input value={tier.amount} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], amount: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. $10" />
+                    <Input type="number" value={tier.usd} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], usd: Number(e.target.value) }; setDonatePageTiers(next); }} placeholder="e.g. 10" />
+                    <button onClick={() => setDonatePageTiers(donatePageTiers.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                  </div>
+                  <Input value={tier.label} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], label: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Learning Materials" />
+                  <Input value={tier.description} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], description: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Provides one student with notebooks, pens..." />
+                  <Input value={tier.impact} onChange={(e) => { const next = [...donatePageTiers]; next[i] = { ...next[i], impact: e.target.value }; setDonatePageTiers(next); }} placeholder="e.g. Learning materials for 1 student" />
+                  <label className="flex items-center gap-2 text-xs font-medium text-[hsl(var(--muted-foreground))] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!tier.featured}
+                      onChange={(e) => { const next = donatePageTiers.map((t, j) => ({ ...t, featured: j === i ? e.target.checked : false })); setDonatePageTiers(next); }}
+                    />
+                    Mark as Most Popular (only one)
+                  </label>
+                </div>
+              ))}
+            </div>
+            <Button className="mt-4" onClick={() => save('donate_page_tiers', JSON.stringify(donatePageTiers))} disabled={updateMutation.isPending}>
+              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
+            </Button>
+          </div>
+
+          {/* Sponsor a Student Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Sponsor a Student Section</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The "Personal Impact" section that promotes student sponsorship.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateSponsorTagline} onChange={(e) => setDonateSponsorTagline(e.target.value)} className="max-w-md" placeholder="e.g. Personal Impact" />
+                  <Button onClick={() => save('donate_sponsor_tagline', donateSponsorTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateSponsorHeading} onChange={(e) => setDonateSponsorHeading(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student Directly" />
+                  <Button onClick={() => save('donate_sponsor_heading', donateSponsorHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
+                <textarea value={donateSponsorDescription} onChange={(e) => setDonateSponsorDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. Through our Sponsor a Student program, you are matched with a specific student..." />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_sponsor_description', donateSponsorDescription)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Benefits (one per line)</label>
+                <textarea value={donateSponsorBenefits.join('\n')} onChange={(e) => setDonateSponsorBenefits(e.target.value.split('\n').filter(Boolean))} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[100px]" placeholder="e.g. A profile and story of the student you're supporting" />
+                <div className="mt-2">
+                  <Button onClick={() => save('donate_sponsor_benefits', JSON.stringify(donateSponsorBenefits))} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Benefits'}
+                  </Button>
+                </div>
+              </div>
+              <div className="flex items-end gap-3">
+                <div className="flex-1 max-w-md">
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button Text</label>
+                  <Input value={donateSponsorBtnText} onChange={(e) => setDonateSponsorBtnText(e.target.value)} placeholder="e.g. Start Sponsoring" />
+                </div>
+                <Button onClick={() => save('donate_sponsor_btn_text', donateSponsorBtnText)} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                </Button>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Show button</span>
+                <button onClick={() => { setDonateSponsorBtnVisible(!donateSponsorBtnVisible); save('donate_sponsor_btn_visible', String(!donateSponsorBtnVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateSponsorBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                  {donateSponsorBtnVisible ? 'Visible' : 'Hidden'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Sponsor Stats */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Sponsor Stats</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The two cards beside the "Sponsor a Student" section.</p>
+            <div className="space-y-4">
+              <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Monthly Sponsorship Banner</span>
+                  <button onClick={() => { setDonateStatVisible(!donateStatVisible); save('donate_stat_visible', String(!donateStatVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateStatVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {donateStatVisible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Amount</label>
+                    <Input value={donateStatAmount} onChange={(e) => setDonateStatAmount(e.target.value)} placeholder="e.g. $50" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Period</label>
+                    <Input value={donateStatPeriod} onChange={(e) => setDonateStatPeriod(e.target.value)} placeholder="e.g. /month" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text</label>
+                  <Input value={donateStatText} onChange={(e) => setDonateStatText(e.target.value)} placeholder="e.g. Sponsors one student for a month" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Fill %</label>
+                    <Input value={donateStatProgress} onChange={(e) => setDonateStatProgress(e.target.value)} placeholder="e.g. 68" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Progress text</label>
+                    <Input value={donateStatProgressText} onChange={(e) => setDonateStatProgressText(e.target.value)} placeholder="e.g. 68% of monthly spots filled" />
+                  </div>
+                </div>
+                <div className="pt-1">
+                  <Button onClick={() => { save('donate_stat_amount', donateStatAmount); save('donate_stat_period', donateStatPeriod); save('donate_stat_text', donateStatText); save('donate_stat_progress', donateStatProgress); save('donate_stat_progress_text', donateStatProgressText); }} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Current Need Banner</span>
+                  <button onClick={() => { setDonateNeedVisible(!donateNeedVisible); save('donate_need_visible', String(!donateNeedVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateNeedVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    {donateNeedVisible ? 'Visible' : 'Hidden'}
+                  </button>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Label</label>
+                  <Input value={donateNeedLabel} onChange={(e) => setDonateNeedLabel(e.target.value)} placeholder="e.g. Current Need" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                  <Input value={donateNeedHeading} onChange={(e) => setDonateNeedHeading(e.target.value)} placeholder="e.g. 47 students awaiting sponsorship" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text</label>
+                  <textarea value={donateNeedText} onChange={(e) => setDonateNeedText(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. These students are enrolled and ready to start..." />
+                </div>
+                <div className="pt-1">
+                  <Button onClick={() => { save('donate_need_label', donateNeedLabel); save('donate_need_heading', donateNeedHeading); save('donate_need_text', donateNeedText); }} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* FAQ Section */}
+          <div className="nexus-card rounded-2xl border p-6">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="nexus-serif text-lg font-semibold">FAQ Section</h2>
+              <Button variant="outline" size="sm" onClick={() => setDonateFaqs([...donateFaqs, { q: '', a: '' }])}>
+                + Add Question
+              </Button>
+            </div>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Admin sets the questions and answers shown on the Donate page.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
+                <div className="flex gap-3">
+                  <Input value={donateFaqTagline} onChange={(e) => setDonateFaqTagline(e.target.value)} className="max-w-md" placeholder="e.g. Questions" />
+                  <Button onClick={() => save('donate_faq_tagline', donateFaqTagline)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <div className="flex gap-3">
+                  <Input value={donateFaqHeading} onChange={(e) => setDonateFaqHeading(e.target.value)} className="max-w-md" placeholder="e.g. Frequently Asked Questions" />
+                  <Button onClick={() => save('donate_faq_heading', donateFaqHeading)} disabled={updateMutation.isPending}>
+                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {donateFaqs.map((faq, i) => (
+                  <div key={i} className="border border-[hsl(var(--border))] rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Question {i + 1}</span>
+                      <button onClick={() => setDonateFaqs(donateFaqs.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
+                    </div>
+                    <Input value={faq.q} onChange={(e) => { const next = [...donateFaqs]; next[i] = { ...next[i], q: e.target.value }; setDonateFaqs(next); }} placeholder="e.g. How is my donation used?" />
+                    <textarea value={faq.a} onChange={(e) => { const next = [...donateFaqs]; next[i] = { ...next[i], a: e.target.value }; setDonateFaqs(next); }} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. 100% of your donation goes directly to student training..." />
+                  </div>
+                ))}
+              </div>
+              <Button className="mt-4" onClick={() => save('donate_faqs', JSON.stringify(donateFaqs))} disabled={updateMutation.isPending}>
+                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save FAQs'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ CONTACT TAB ═══════════════════ */}
+      {activeTab === 'contact' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Contact page hero section.</p>
+            <HeroImageField label="Contact Page Hero Image" value={contactHeroImage} onChange={setContactHeroImage} onSave={(url) => save('contact_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ RESEARCH TAB ═══════════════════ */}
+      {activeTab === 'research' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Research page hero section.</p>
+            <HeroImageField label="Research Page Hero Image" value={researchHeroImage} onChange={setResearchHeroImage} onSave={(url) => save('research_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ STUDENTS TAB ═══════════════════ */}
+      {activeTab === 'students' && (
+        <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Students page hero section.</p>
+            <HeroImageField label="Students Page Hero Image" value={studentsHeroImage} onChange={setStudentsHeroImage} onSave={(url) => save('students_hero_image', url)} saving={updateMutation.isPending} />
+          </div>
+        </div>
+      )}
+
       {/* ═══════════════════ FOOTER TAB ═══════════════════ */}
       {activeTab === 'footer' && (
         <div className="space-y-8 pt-4">
@@ -1658,6 +3277,283 @@ function HomeRedirect() {
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
+}
+
+function StudentStoriesManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: stories = [], isLoading } = useQuery({
+    queryKey: ['admin-student-stories'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/student-stories`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/student-stories/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-student-stories'] }),
+  });
+
+  const handleUpload = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url || data.fileUrl || null;
+    } catch { return null; }
+  };
+
+  if (showForm) {
+    return <StudentStoryForm story={editing} onClose={() => { setShowForm(false); setEditing(null); }} onUpload={handleUpload} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Story</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : stories.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No student stories yet.</p>
+      ) : (
+        <div className="space-y-2">
+          {stories.map((s) => (
+            <div key={s.id} className="flex items-center gap-4 p-4 rounded-xl border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted)/.3)] transition-colors">
+              {s.imageUrl && <img src={s.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />}
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{s.title || 'Untitled'}</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{s.studentName || s.author || 'Unknown'}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <Button variant="ghost" size="sm" onClick={() => { setEditing(s); setShowForm(true); }}><span className="sr-only">Edit</span></Button>
+                <Button variant="ghost" size="sm" onClick={() => { if (confirm('Delete this story?')) deleteMutation.mutate(Number(s.id)); }} className="text-red-500 hover:text-red-600"><span className="sr-only">Delete</span></Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StudentStoryForm({ story, onClose, onUpload }: { story: Record<string, string> | null; onClose: () => void; onUpload: (file: File) => Promise<string | null> }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    title: story?.title || '', slug: story?.slug || '', content: story?.content || '',
+    studentName: story?.studentName || '', author: story?.author || '',
+    program: story?.program || '', graduationYear: story?.graduationYear || '',
+    imageUrl: story?.imageUrl || '', featured: story?.featured === 'true',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const body = { ...data, featured: String(data.featured) };
+      if (story?.id) return customFetch(`${NAD_API}/api/v1/admin/student-stories/${story.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return customFetch(`${NAD_API}/api/v1/admin/student-stories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-student-stories'] });
+      onClose();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await onUpload(file);
+    if (url) setForm(f => ({ ...f, imageUrl: url }));
+    setUploading(false);
+  };
+
+  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onClose}><X size={16} /></Button>
+        <h2 className="nexus-serif text-lg font-semibold">{story ? 'Edit Story' : 'New Story'}</h2>
+      </div>
+      <div className="nexus-card rounded-2xl border p-6 space-y-4">
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label><input value={form.title} onChange={e => set('title', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Student Name</label><input value={form.studentName} onChange={e => set('studentName', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Program</label><input value={form.program} onChange={e => set('program', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Graduation Year</label><input value={form.graduationYear} onChange={e => set('graduationYear', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Author</label><input value={form.author} onChange={e => set('author', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" /></div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Content</label><textarea value={form.content} onChange={e => set('content', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[120px]" /></div>
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Image</label>
+          {form.imageUrl && <img src={form.imageUrl} alt="" className="w-24 h-24 rounded-lg object-cover mb-2" />}
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[hsl(var(--primary))] text-primary-foreground text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
+            {uploading ? <Loader2 className="animate-spin" size={14} /> : <ImagePlus size={14} />}
+            {form.imageUrl ? 'Change Photo' : 'Choose Photo'}
+            <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="hidden" />
+          </label>
+          {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={form.featured} onChange={e => set('featured', e.target.checked)} id="featured" className="rounded" />
+          <label htmlFor="featured" className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Featured</label>
+        </div>
+        <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="animate-spin mr-1" size={14} /> : null}
+          {story ? 'Update Story' : 'Create Story'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PhotoGalleryManager() {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<Record<string, string> | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  const { data: items = [], isLoading } = useQuery({
+    queryKey: ['admin-gallery'],
+    queryFn: () => customFetch<Record<string, string>[]>(`${NAD_API}/api/v1/admin/gallery`),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => customFetch(`${NAD_API}/api/v1/admin/gallery/${id}`, { method: 'DELETE' }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-gallery'] }),
+  });
+
+  const handleUpload = async (file: File): Promise<string | null> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      return data.url || data.fileUrl || null;
+    } catch { return null; }
+  };
+
+  if (showForm) {
+    return <GalleryItemForm item={editing} onClose={() => { setShowForm(false); setEditing(null); }} onUpload={handleUpload} />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button size="sm" onClick={() => { setEditing(null); setShowForm(true); }}><span className="mr-1">+</span> Add Photo</Button>
+      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="animate-spin" size={20} /></div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-8">No gallery photos yet.</p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {items.map((item) => (
+            <div key={item.id} className="group relative rounded-xl overflow-hidden border border-[hsl(var(--border))] aspect-square">
+              <img src={item.src} alt={item.alt || ''} className="w-full h-full object-cover" />
+              <div className="absolute top-2 right-2 flex gap-1 z-10">
+                <button onClick={() => { setEditing(item); setShowForm(true); }} className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-white/30 transition-colors"><Pencil size={12} className="text-white" /></button>
+                <button onClick={() => { if (confirm('Delete this photo?')) deleteMutation.mutate(Number(item.id)); }} className="w-7 h-7 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center hover:bg-red-500/80 transition-colors"><Trash2 size={12} className="text-white" /></button>
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent pointer-events-none">
+                <div className="absolute bottom-0 left-0 right-0 p-3">
+                  <p className="text-xs text-white font-medium truncate">{item.caption || 'No caption'}</p>
+                  {item.category && <p className="text-[10px] text-white/60 mt-0.5">{item.category}</p>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, string> | null; onClose: () => void; onUpload: (file: File) => Promise<string | null> }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    src: item?.src || '', alt: item?.alt || '', caption: item?.caption || '',
+    category: item?.category || '', span: item?.span || '1',
+  });
+  const [uploading, setUploading] = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>): Promise<Record<string, string>> => {
+      const body = { ...data, span: parseInt(data.span as string) || 1 };
+      if (item?.id) return customFetch(`${NAD_API}/api/v1/admin/gallery/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return customFetch(`${NAD_API}/api/v1/admin/gallery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    },
+    onSuccess: async (saved) => {
+      queryClient.setQueryData<Record<string, string>[]>(['admin-gallery'], (old = []) => {
+        const idx = old.findIndex((g) => String(g.id) === String(saved.id));
+        if (idx >= 0) {
+          const next = [...old];
+          next[idx] = saved;
+          return next;
+        }
+        return [saved, ...old];
+      });
+      await queryClient.refetchQueries({ queryKey: ['admin-gallery'] });
+      onClose();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const url = await onUpload(file);
+    if (url) setForm(f => ({ ...f, src: url }));
+    setUploading(false);
+  };
+
+  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onClose}><X size={16} /></Button>
+        <h2 className="nexus-serif text-lg font-semibold">{item ? 'Edit Photo' : 'New Photo'}</h2>
+      </div>
+      <div className="nexus-card rounded-2xl border p-6 space-y-4">
+        <div>
+          <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Photo</label>
+          {form.src && <img src={form.src} alt="" className="w-32 h-32 rounded-lg object-cover mb-2" />}
+          {!form.src && (
+            <div className="w-32 h-32 rounded-lg border-2 border-dashed border-[hsl(var(--border))] flex items-center justify-center mb-2">
+              <ImagePlus size={20} className="text-[hsl(var(--muted-foreground))]" />
+            </div>
+          )}
+          <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[hsl(var(--primary))] text-primary-foreground text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity disabled:opacity-50">
+            {uploading ? <Loader2 className="animate-spin" size={14} /> : <ImagePlus size={14} />}
+            {form.src ? 'Change Photo' : 'Choose Photo'}
+            <input type="file" accept="image/*" onChange={handleFileChange} disabled={uploading} className="hidden" />
+          </label>
+          {uploading && <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Uploading...</p>}
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Caption</label><input value={form.caption} onChange={e => set('caption', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Describe this photo" /></div>
+        <div className="grid grid-cols-2 gap-4">
+          <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category</label><input value={form.category} onChange={e => set('category', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Training, Graduation" /></div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Span</label>
+            <select value={form.span} onChange={e => set('span', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
+              <option value="1">Normal</option>
+              <option value="2">Wide (2 cols)</option>
+              <option value="3">Tall (2 rows)</option>
+            </select>
+          </div>
+        </div>
+        <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Alt Text</label><input value={form.alt} onChange={e => set('alt', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Accessibility text" /></div>
+        <Button onClick={() => saveMutation.mutate(form)} disabled={saveMutation.isPending}>
+          {saveMutation.isPending ? <Loader2 className="animate-spin mr-1" size={14} /> : null}
+          {item ? 'Update Photo' : 'Add Photo'}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function Router() {

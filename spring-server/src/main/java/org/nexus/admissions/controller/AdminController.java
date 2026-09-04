@@ -13,6 +13,7 @@ import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -87,5 +88,68 @@ public class AdminController {
     @PutMapping("/site-settings")
     public ResponseEntity<Map<String, Object>> updateSiteSetting(@RequestBody Map<String, String> body) {
         return ResponseEntity.ok(adminFacade.updateSiteSetting(body.get("settingKey"), body.get("settingValue")));
+    }
+
+    @GetMapping("/student-stories")
+    public ResponseEntity<List<Map<String, Object>>> getStudentStories() {
+        return ResponseEntity.ok(adminFacade.getStudentStoriesAdmin());
+    }
+
+    @PostMapping("/student-stories")
+    public ResponseEntity<Map<String, Object>> createStudentStory(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.createStudentStory(body));
+    }
+
+    @PutMapping("/student-stories/{id}")
+    public ResponseEntity<Map<String, Object>> updateStudentStory(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.updateStudentStory(id, body));
+    }
+
+    @DeleteMapping("/student-stories/{id}")
+    public ResponseEntity<Void> deleteStudentStory(@PathVariable Long id) {
+        adminFacade.deleteStudentStory(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/gallery")
+    public ResponseEntity<List<Map<String, Object>>> getGallery() {
+        return ResponseEntity.ok(adminFacade.getGalleryAdmin());
+    }
+
+    @PostMapping("/gallery")
+    public ResponseEntity<Map<String, Object>> createGalleryItem(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.createGalleryItem(body));
+    }
+
+    @PutMapping("/gallery/{id}")
+    public ResponseEntity<Map<String, Object>> updateGalleryItem(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.updateGalleryItem(id, body));
+    }
+
+    @DeleteMapping("/gallery/{id}")
+    public ResponseEntity<Void> deleteGalleryItem(@PathVariable Long id) {
+        adminFacade.deleteGalleryItem(id);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/partners")
+    public ResponseEntity<List<Map<String, Object>>> listPartners() {
+        return ResponseEntity.ok(adminFacade.fetchPartners());
+    }
+
+    @PostMapping("/partners")
+    public ResponseEntity<Map<String, Object>> createPartner(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.createPartner(body));
+    }
+
+    @PutMapping("/partners/{id}")
+    public ResponseEntity<Map<String, Object>> updatePartner(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(adminFacade.updatePartner(id, body));
+    }
+
+    @DeleteMapping("/partners/{id}")
+    public ResponseEntity<Void> deletePartner(@PathVariable Long id) {
+        adminFacade.deletePartner(id);
+        return ResponseEntity.ok().build();
     }
 }
