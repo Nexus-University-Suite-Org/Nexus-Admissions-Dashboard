@@ -28,6 +28,10 @@ public class AdminService {
         return repository.save(admin);
     }
 
+    public Admin update(Admin admin) {
+        return repository.save(admin);
+    }
+
     public boolean existsByEmail(String email) {
         return repository.existsByEmail(email);
     }

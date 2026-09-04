@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
+import { useNotifications } from './hooks/useNotifications';
 import {
   ArrowLeft,
   ArrowRight,
@@ -73,6 +74,20 @@ const NAD_API = 'http://localhost:8083';
 const queryClient = new QueryClient();
 setBaseUrl('http://localhost:8083');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+function timeAgo(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 function useGetSiteSettings() {
   return useQuery({
@@ -179,18 +194,31 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
 function Shell({ children, identity }: { children: ReactNode; identity?: { fullName: string; email: string } }) {
   const [location, setLocation] = useLocation();
   const [mobileNav, setMobileNav] = useState(false);
+  const [showBellDropdown, setShowBellDropdown] = useState(false);
+  const bellDropdownRef = useRef<HTMLDivElement>(null);
+  const { notifications, unreadCount, isConnected, markAsRead, markAllAsRead } = useNotifications();
   const nav = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/admin/applications', label: 'Applications', icon: ClipboardList },
     { href: '/admin/programs', label: 'Programs', icon: GraduationCap },
     { href: '/admin/schemes', label: 'Schemes', icon: Megaphone },
     { href: '/admin/settings', label: 'Site Settings', icon: Settings },
+    { href: '/admin/admin-settings', label: 'System Admin', icon: UserRound },
   ];
   const logout = () => {
     localStorage.removeItem('nap_admin_token');
     queryClient.clear();
     setLocation('/admin/login');
   };
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (bellDropdownRef.current && !bellDropdownRef.current.contains(e.target as Node)) {
+        setShowBellDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   return (
     <div className="nexus-shell flex">
       <button aria-label="Close navigation" data-testid="button-close-nav" onClick={() => setMobileNav(false)} className={`fixed inset-0 z-30 bg-[hsl(190_32%_12%/.4)] transition-opacity md:hidden ${mobileNav ? 'opacity-100' : 'pointer-events-none opacity-0'}`} />
@@ -218,7 +246,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border)/.8)] bg-[hsl(var(--background)/.92)] px-5 backdrop-blur-md md:px-10">
           <div className="flex items-center gap-3"><button data-testid="button-open-nav" aria-label="Open navigation" onClick={() => setMobileNav(true)} className="rounded-lg p-2 hover:bg-[hsl(var(--muted))] md:hidden"><Menu size={20} /></button><div className="hidden md:block nexus-kicker text-[hsl(var(--muted-foreground))]">NEXUS / REGISTRARIAL SERVICES</div><span className="md:hidden"><LogoMark compact /></span></div>
-          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">2025 intake · Semester one</span><button data-testid="button-notifications" aria-label="Notifications" className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[hsl(var(--destructive))]" /></button></div>
+          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">2025 intake · Semester one</span><div ref={bellDropdownRef} className="relative"><button data-testid="button-notifications" aria-label="Notifications" onClick={() => setShowBellDropdown(!showBellDropdown)} className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} />{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showBellDropdown && (<div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl z-50"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3"><span className="text-sm font-semibold text-[hsl(var(--card-foreground))]">Notifications</span>{unreadCount > 0 && (<button onClick={() => markAllAsRead()} className="text-xs text-[hsl(var(--primary))] hover:underline">Mark all read</button>)}</div><div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? (<div className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">No notifications yet</div>) : (notifications.map((n) => (<button key={n.id} onClick={() => { if (!n.read) markAsRead(n.id); }} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[hsl(var(--muted))] ${!n.read ? 'bg-[hsl(var(--muted)/.5)]' : ''}`}><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!n.read ? 'bg-[hsl(var(--primary))]' : 'bg-transparent'}`} /><div className="min-w-0 flex-1"><p className={`text-xs ${!n.read ? 'font-semibold text-[hsl(var(--card-foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>{n.title}</p><p className="mt-0.5 truncate text-[11px] text-[hsl(var(--muted-foreground))]">{n.message}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{timeAgo(n.createdAt)}</p></div></button>)))}</div>{notifications.length > 0 && (<div className="border-t border-[hsl(var(--border))] px-4 py-2 text-center"><span className="text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{isConnected ? 'Live' : 'Reconnecting...'}</span></div>)}</div>)}</div></div>
         </header>
         <main className="mx-auto max-w-[1440px] px-5 py-7 md:px-10 md:py-10">{children}</main>
       </div>
@@ -878,6 +906,7 @@ function SiteSettingsPage() {
     setSaveToast({ title, description });
     saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
   };
+
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'contact' | 'research' | 'students' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
@@ -3628,6 +3657,160 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
   );
 }
 
+function AdminSettingsPage() {
+  const { data: adminProfile } = useGetAdminMe({ query: { enabled: Boolean(localStorage.getItem('nap_admin_token')), retry: false, queryKey: getGetAdminMeQueryKey() } });
+  const updateProfileMutation = useMutation({
+    mutationFn: (data: { fullName: string; email: string }) =>
+      customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+  const changePasswordMutation = useMutation({
+    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
+      customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saveToast, setSaveToast] = useState<{ title: string; description: string } | null>(null);
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const showSaveToast = (title: string, description: string) => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setSaveToast({ title, description });
+    saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  useEffect(() => {
+    if (adminProfile && !loaded) {
+      setFullName(adminProfile.fullName || '');
+      setEmail(adminProfile.email || '');
+      setLoaded(true);
+    }
+  }, [adminProfile, loaded]);
+
+  if (!loaded) return <PageLoader label="Loading administrator profile" />;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="nexus-serif text-2xl font-bold">System Administrator</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Manage your admin account credentials.</p>
+        </div>
+      </div>
+
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <UserRound size={18} className="text-[hsl(var(--primary))]" />
+          <h2 className="nexus-serif text-lg font-semibold">Administrator Profile</h2>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-5">Manage your account name and email address.</p>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Full Name</label>
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. System Administrator" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Email Address</label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="e.g. admin@nexus.edu" />
+          </div>
+          <Button onClick={async () => {
+            if (!fullName.trim() || !email.trim()) {
+              showSaveToast('Error', 'Name and email are required.');
+              return;
+            }
+            try {
+              const result = await updateProfileMutation.mutateAsync({ fullName, email });
+              if (result.email) setEmail(result.email);
+              if (result.fullName) setFullName(result.fullName);
+              showSaveToast('Profile Updated', 'Your administrator profile has been saved.');
+            } catch (err: any) {
+              showSaveToast('Error', err?.message || 'Failed to update profile.');
+            }
+          }} disabled={updateProfileMutation.isPending}>
+            {updateProfileMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Profile'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <ShieldCheck size={18} className="text-[hsl(var(--primary))]" />
+          <h2 className="nexus-serif text-lg font-semibold">Change Password</h2>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-5">Update your login password. You must enter your current password to confirm.</p>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Current Password</label>
+            <Input value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} type="password" placeholder="Enter current password" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">New Password</label>
+            <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Confirm New Password</label>
+            <Input value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} type="password" placeholder="Re-enter new password" />
+          </div>
+          <Button onClick={async () => {
+            if (!currentPassword || !newPassword) {
+              showSaveToast('Error', 'All password fields are required.');
+              return;
+            }
+            if (newPassword.length < 6) {
+              showSaveToast('Error', 'New password must be at least 6 characters.');
+              return;
+            }
+            if (newPassword !== confirmPassword) {
+              showSaveToast('Error', 'New passwords do not match.');
+              return;
+            }
+            try {
+              await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
+              setCurrentPassword('');
+              setNewPassword('');
+              setConfirmPassword('');
+              showSaveToast('Password Changed', 'Your password has been updated successfully.');
+            } catch (err: any) {
+              showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
+            }
+          }} disabled={changePasswordMutation.isPending}>
+            {changePasswordMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Change Password'}
+          </Button>
+        </div>
+      </div>
+
+      {saveToast && (
+        <div className="fixed top-6 right-6 z-50 pointer-events-auto" style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}>
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
+              <Check size={16} strokeWidth={3} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+            </div>
+            <button onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }} className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+          <style>{`@keyframes toastIn { from { opacity: 0; transform: translateX(16px) scale(0.96); } to { opacity: 1; transform: translateX(0) scale(1); } }`}</style>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Router() {
   return <RoutedErrorBoundary><Switch>
     <Route path="/" component={HomeRedirect} />
@@ -3636,6 +3819,7 @@ function Router() {
     <Route path="/admin/programs"><AuthGate><ProgramsPage /></AuthGate></Route>
     <Route path="/admin/schemes"><AuthGate><SchemesPage /></AuthGate></Route>
     <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
+    <Route path="/admin/admin-settings"><AuthGate><AdminSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>
     <Route path="/admin/applications"><AuthGate><ApplicationsPage /></AuthGate></Route>
     <Route path="/admin"><AuthGate><DashboardPage /></AuthGate></Route>
