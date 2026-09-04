@@ -3267,10 +3267,8 @@ function SiteSettingsPage() {
 
 import ProgramsPage from './pages/ProgramsPage';
 import CategoriesPage from './pages/CategoriesPage';
-import CutoffsPage from './pages/CutoffsPage';
 
-function HomeRedirect() {
-  const [, setLocation] = useLocation();
+function HomeRedirect() {  const [, setLocation] = useLocation();
   useEffect(() => { setLocation(localStorage.getItem('nap_admin_token') ? '/admin' : '/admin/login'); }, [setLocation]);
   return <PageLoader label="Opening Nexus admissions" />;
 }
@@ -3562,7 +3560,6 @@ function Router() {
     <Route path="/" component={HomeRedirect} />
     <Route path="/admin/login" component={LoginPage} />
     <Route path="/admin/programs/categories"><AuthGate><CategoriesPage /></AuthGate></Route>
-    <Route path="/admin/programs/cutoffs"><AuthGate><CutoffsPage /></AuthGate></Route>
     <Route path="/admin/programs"><AuthGate><ProgramsPage /></AuthGate></Route>
     <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>

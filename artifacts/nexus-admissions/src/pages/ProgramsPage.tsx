@@ -1,10 +1,10 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle } from 'lucide-react';
 
 const NAP_API = 'http://localhost:8080';
 
@@ -20,13 +20,8 @@ type Program = {
   imageUrl: string; shortDescription: string; fullDescription: string;
   featured: boolean; displayOrder: number; createdBy: string; createdAt: string;
   updatedBy: string; updatedAt: string; categoryNames: string[];
-};
-
-type Programme = {
-  id: number; code: string; name: string; faculty: string;
-  minimumUcePasses: number; cutoffScore: number; essentialSubjects: string;
-  relevantSubjects: string; desirableSubjects: string; entryRequirements: string;
-  isActive: boolean; capacity: number;
+  cutoffScore: number; essentialSubjects: string; relevantSubjects: string; desirableSubjects: string;
+  minimumUcePasses: number; capacity: number; intakeYear: string;
 };
 
 type ProgramCategory = {
@@ -52,8 +47,6 @@ export default function ProgramsPage() {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [expandedProgrammeId, setExpandedProgrammeId] = useState<number | null>(null);
-  const [facultyFilter, setFacultyFilter] = useState('');
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [showForm, setShowForm] = useState(false);
 
@@ -70,20 +63,6 @@ export default function ProgramsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-programs'] }),
-  });
-
-  const { data: programmes = [], isLoading: programmesLoading } = useQuery({
-    queryKey: ['admin-programmes'],
-    queryFn: () => customFetch<Programme[]>(`${NAP_API}/api/v1/programmes`),
-  });
-
-  const facultyOptions = useMemo(() => Array.from(new Set(programmes.map((p: Programme) => p.faculty).filter(Boolean))).sort(), [programmes]);
-
-  const filteredProgrammes = programmes.filter((p: Programme) => {
-    if (facultyFilter && p.faculty !== facultyFilter) return false;
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || (p.faculty || '').toLowerCase().includes(q);
   });
 
   const filtered = programs.filter(p => {
@@ -107,7 +86,11 @@ export default function ProgramsPage() {
     return <ProgramForm program={editingProgram} categories={categories} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
   }
 
-  const subjects = (raw: string) => parseJson<string[]>(raw, []);
+  const subjects = (raw: string) => {
+    const parsed = parseJson<string[]>(raw, []);
+    if (parsed.length && raw.trim().startsWith('[')) return parsed;
+    return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  };
 
   return (
     <div className="space-y-6">
@@ -117,9 +100,6 @@ export default function ProgramsPage() {
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Browse all academic programmes offered by your institution and manage their public marketing profiles.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link href="/admin/programs/cutoffs">
-            <Button variant="outline" size="sm"><SlidersHorizontal size={14} className="mr-1" /> Cutoff Points</Button>
-          </Link>
           <Link href="/admin/programs/categories">
             <Button variant="outline" size="sm"><BookOpen size={14} className="mr-1" /> Categories</Button>
           </Link>
@@ -132,88 +112,11 @@ export default function ProgramsPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search programmes..." className="pl-9" />
         </div>
-        <select value={facultyFilter} onChange={(e) => setFacultyFilter(e.target.value)} className="rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm max-w-[260px]">
-          <option value="">All Faculties</option>
-          {facultyOptions.map(f => <option key={f} value={f}>{f}</option>)}
-        </select>
       </div>
 
       <div className="flex items-center gap-2">
         <h2 className="nexus-serif text-lg font-bold">All Programmes</h2>
-        <span className="text-[10px] px-2 py-1 rounded-full bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))] font-medium">{filteredProgrammes.length} of {programmes.length}</span>
-      </div>
-
-      {programmesLoading ? (
-        <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin" size={24} /></div>
-      ) : filteredProgrammes.length === 0 ? (
-        <div className="nexus-card rounded-2xl border p-12 text-center">
-          <GraduationCap size={40} className="mx-auto mb-4 opacity-30" />
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">No programmes found.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredProgrammes.map((p: Programme) => (
-            <div key={p.id} className="nexus-card rounded-2xl border overflow-hidden">
-              <button onClick={() => setExpandedProgrammeId(expandedProgrammeId === p.id ? null : p.id)} className="w-full flex items-center gap-4 p-5 text-left hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
-                <GripVertical size={16} className="text-[hsl(var(--muted-foreground))] opacity-30 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h3 className="font-semibold text-sm truncate">{p.name}</h3>
-                    <span className="text-[10px] font-mono bg-[hsl(var(--muted))] px-2 py-0.5 rounded">{p.code}</span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${p.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>{p.isActive ? 'Active' : 'Inactive'}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))] flex-wrap">
-                    {p.faculty && <span>{p.faculty}</span>}
-                    <span>Min UCE passes: {p.minimumUcePasses}</span>
-                    <span>Capacity: {p.capacity}</span>
-                    <span className="text-accent">Cutoff: {p.cutoffScore}</span>
-                  </div>
-                </div>
-                {expandedProgrammeId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              {expandedProgrammeId === p.id && (
-                <div className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Code:</span> <span className="font-medium">{p.code}</span></div>
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Faculty:</span> <span className="font-medium">{p.faculty || '—'}</span></div>
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Min UCE passes:</span> <span className="font-medium">{p.minimumUcePasses}</span></div>
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Capacity:</span> <span className="font-medium">{p.capacity}</span></div>
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Cutoff:</span> <span className="font-medium">{p.cutoffScore}</span></div>
-                    <div><span className="text-[hsl(var(--muted-foreground))]">Status:</span> <span className="font-medium">{p.isActive ? 'Active' : 'Inactive'}</span></div>
-                  </div>
-                  {p.entryRequirements && (
-                    <div className="text-xs"><span className="text-[hsl(var(--muted-foreground))]">Entry Requirements:</span> <span className="font-medium">{p.entryRequirements}</span></div>
-                  )}
-                  <div className="grid md:grid-cols-3 gap-4 text-xs">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Essential Subjects</p>
-                      {subjects(p.essentialSubjects).length ? (
-                        <div className="flex flex-wrap gap-1.5">{subjects(p.essentialSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{s}</span>)}</div>
-                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Relevant Subjects</p>
-                      {subjects(p.relevantSubjects).length ? (
-                        <div className="flex flex-wrap gap-1.5">{subjects(p.relevantSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{s}</span>)}</div>
-                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Desirable Subjects</p>
-                      {subjects(p.desirableSubjects).length ? (
-                        <div className="flex flex-wrap gap-1.5">{subjects(p.desirableSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">{s}</span>)}</div>
-                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 pt-2">
-        <h2 className="nexus-serif text-lg font-bold">Marketing Profiles</h2>
-        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Optional public-facing program detail pages</span>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))] font-medium">{filtered.length} of {programs.length}</span>
       </div>
 
       {isLoading ? (
@@ -221,7 +124,7 @@ export default function ProgramsPage() {
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <GraduationCap size={40} className="mx-auto mb-4 opacity-30" />
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">No marketing profiles found. Click <strong>Add Program</strong> to create a public-facing program page.</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">No programmes found. Click <strong>Add Program</strong> to create one.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -236,11 +139,14 @@ export default function ProgramsPage() {
                     {p.programType && <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{p.programType}</span>}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(p.status)}`}>{p.status}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))]">
+                  <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))] flex-wrap">
                     {p.facultySchool && <span>{p.facultySchool}</span>}
                     {p.duration && <span>{p.duration} {p.durationUnit || 'years'}</span>}
                     {p.totalCreditUnits && <span>{p.totalCreditUnits} credits</span>}
                     {p.studyMode && <span>{p.studyMode}</span>}
+                    <span>Min UCE passes: {p.minimumUcePasses ?? 5}</span>
+                    {p.capacity ? <span>Capacity: {p.capacity}</span> : null}
+                    {p.cutoffScore ? <span className="text-accent">Cutoff: {p.cutoffScore}</span> : null}
                     {p.categoryNames?.length > 0 && <span className="text-accent">{p.categoryNames.join(', ')}</span>}
                   </div>
                 </div>
@@ -267,6 +173,32 @@ export default function ProgramsPage() {
                     }
                     return null;
                   })()}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Min UCE passes:</span> <span className="font-medium">{p.minimumUcePasses ?? 5}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Capacity:</span> <span className="font-medium">{p.capacity || '—'}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Intake Year:</span> <span className="font-medium">{p.intakeYear || '—'}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Cutoff:</span> <span className="font-medium">{p.cutoffScore || '—'}</span></div>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Essential Subjects</p>
+                      {subjects(p.essentialSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.essentialSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Relevant Subjects</p>
+                      {subjects(p.relevantSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.relevantSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Desirable Subjects</p>
+                      {subjects(p.desirableSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.desirableSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -302,6 +234,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     imageUrl: program?.imageUrl || '', shortDescription: program?.shortDescription || '',
     fullDescription: program?.fullDescription || '', featured: program?.featured || false,
     displayOrder: program?.displayOrder || 0,
+    cutoffScore: program?.cutoffScore || 0, essentialSubjects: program?.essentialSubjects || '',
+    relevantSubjects: program?.relevantSubjects || '', desirableSubjects: program?.desirableSubjects || '',
+    minimumUcePasses: program?.minimumUcePasses || 5, capacity: program?.capacity || 100,
+    intakeYear: program?.intakeYear || '',
   });
 
   const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
@@ -907,6 +843,15 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             )}
             {section === 'admission' && (
               <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Field label="Cutoff Score (AGP)" value={form.cutoffScore} onChange={v => set('cutoffScore', parseFloat(v) || 0)} type="number" placeholder="e.g. 26" />
+                  <Field label="Min UCE Passes" value={form.minimumUcePasses} onChange={v => set('minimumUcePasses', parseInt(v) || 5)} type="number" />
+                  <Field label="Capacity" value={form.capacity} onChange={v => set('capacity', parseInt(v) || 100)} type="number" />
+                  <Field label="Intake Year" value={form.intakeYear} onChange={v => set('intakeYear', v)} placeholder="e.g. 2026" />
+                </div>
+                <Field label="Essential Subjects" value={form.essentialSubjects} onChange={v => set('essentialSubjects', v)} placeholder="Comma-separated, e.g. Mathematics, Physics, Chemistry" />
+                <Field label="Relevant Subjects" value={form.relevantSubjects} onChange={v => set('relevantSubjects', v)} placeholder="Comma-separated" />
+                <Field label="Desirable Subjects" value={form.desirableSubjects} onChange={v => set('desirableSubjects', v)} placeholder="Comma-separated" />
                 <Field label="Minimum Entry Qualification" value={admissionReq.min_qualification} onChange={v => setAdmissionReq(f => ({ ...f, min_qualification: v }))} />
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Minimum Grade" value={admissionReq.min_grade} onChange={v => setAdmissionReq(f => ({ ...f, min_grade: v }))} />
