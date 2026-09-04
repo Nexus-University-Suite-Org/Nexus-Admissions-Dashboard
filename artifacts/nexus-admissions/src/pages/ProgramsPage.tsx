@@ -22,6 +22,13 @@ type Program = {
   updatedBy: string; updatedAt: string; categoryNames: string[];
 };
 
+type Programme = {
+  id: number; code: string; name: string; faculty: string;
+  minimumUcePasses: number; cutoffScore: number; essentialSubjects: string;
+  relevantSubjects: string; desirableSubjects: string; entryRequirements: string;
+  isActive: boolean; capacity: number;
+};
+
 type ProgramCategory = {
   id: number; name: string; description: string; displayOrder: number;
   createdAt: string; programs: { id: number; programName: string; programCode: string; programType: string }[];
@@ -61,6 +68,43 @@ export default function ProgramsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-programs'] }),
+  });
+
+  const { data: programmes = [], isLoading: programmesLoading } = useQuery({
+    queryKey: ['admin-programmes'],
+    queryFn: () => customFetch<Programme[]>(`${NAP_API}/api/v1/programmes`),
+  });
+
+  const [cutoffDraft, setCutoffDraft] = useState<Record<string, string>>({});
+  const [savingCutoff, setSavingCutoff] = useState<string | null>(null);
+  const cutoffMutation = useMutation({
+    mutationFn: async ({ code, cutoffScore }: { code: string; cutoffScore: number }) => {
+      await customFetch(`${NAP_API}/api/v1/admin/programmes/cutoff`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, cutoffScore }),
+      });
+    },
+    onMutate: ({ code }) => setSavingCutoff(code),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-programmes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
+      setSavingCutoff(null);
+    },
+    onError: () => setSavingCutoff(null),
+  });
+  const saveCutoff = (code: string) => {
+    const raw = (cutoffDraft[code] ?? '').trim();
+    const value = raw === '' ? NaN : parseFloat(raw);
+    if (isNaN(value)) return;
+    cutoffMutation.mutate({ code, cutoffScore: value }, {
+      onSuccess: () => setCutoffDraft(d => { const n = { ...d }; delete n[code]; return n; }),
+    });
+  };
+
+  const filteredProgrammes = programmes.filter((p: Programme) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q) || (p.faculty || '').toLowerCase().includes(q);
   });
 
   const filtered = programs.filter(p => {
@@ -112,6 +156,56 @@ export default function ProgramsPage() {
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
+      </div>
+
+      <div className="rounded-2xl border border-[hsl(var(--primary)/.2)] bg-[hsl(var(--primary)/.04)] p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="nexus-serif text-lg font-bold">Cutoff Points</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))]">Set the minimum weighted score required for admission per programme. Applicants see these cutoffs per course.</p>
+          </div>
+          <span className="text-[10px] px-2 py-1 rounded-full bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))] font-medium">{programmes.length} programmes</span>
+        </div>
+        {programmesLoading ? (
+          <div className="flex items-center justify-center py-10"><Loader2 className="animate-spin" size={20} /></div>
+        ) : filteredProgrammes.length === 0 ? (
+          <div className="text-sm text-[hsl(var(--muted-foreground))] py-6 text-center">No programmes found{search ? ' for your search' : ''}.</div>
+        ) : (
+          <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+            {filteredProgrammes.map((p: Programme) => {
+              const draft = cutoffDraft[p.code];
+              const isSaving = savingCutoff === p.code;
+              return (
+                <div key={p.id} className="flex items-center gap-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{p.name}</p>
+                    <p className="text-[10px] text-[hsl(var(--muted-foreground))]">{p.code}{p.faculty ? ` · ${p.faculty}` : ''}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="text-[10px] text-[hsl(var(--muted-foreground))] hidden sm:inline">Cutoff</label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={draft !== undefined ? draft : String(p.cutoffScore)}
+                      onChange={(e) => setCutoffDraft(d => ({ ...d, [p.code]: e.target.value }))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveCutoff(p.code); }}
+                      className="w-24 text-sm"
+                    />
+                    <Button size="sm" variant="outline" onClick={() => saveCutoff(p.code)} disabled={isSaving || draft === undefined}>
+                      {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <h2 className="nexus-serif text-lg font-bold">Marketing Profiles</h2>
+        <span className="text-[10px] text-[hsl(var(--muted-foreground))]">Optional public-facing program detail pages</span>
       </div>
 
       {isLoading ? (
