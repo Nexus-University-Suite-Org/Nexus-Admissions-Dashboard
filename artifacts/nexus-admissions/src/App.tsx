@@ -740,6 +740,9 @@ function SiteSettingsPage() {
   const [partnersHeroImage, setPartnersHeroImage] = useState('');
   const [donateHeroImage, setDonateHeroImage] = useState('');
   const [contactHeroImage, setContactHeroImage] = useState('');
+  const [contactHeroTagline, setContactHeroTagline] = useState('');
+  const [contactHeroHeading, setContactHeroHeading] = useState('');
+  const [contactHeroDescription, setContactHeroDescription] = useState('');
   const [researchHeroImage, setResearchHeroImage] = useState('');
   const [studentsHeroImage, setStudentsHeroImage] = useState('');
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
@@ -922,6 +925,9 @@ function SiteSettingsPage() {
       setPartnersHeroImage(getSetting('partners_hero_image'));
       setDonateHeroImage(getSetting('donate_hero_image'));
       setContactHeroImage(getSetting('contact_hero_image'));
+      setContactHeroTagline(getSetting('contact_hero_tagline'));
+      setContactHeroHeading(getSetting('contact_hero_heading'));
+      setContactHeroDescription(getSetting('contact_hero_description'));
       setResearchHeroImage(getSetting('research_hero_image'));
       setStudentsHeroImage(getSetting('students_hero_image'));
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
@@ -3188,6 +3194,33 @@ function SiteSettingsPage() {
       {/* ═══════════════════ CONTACT TAB ═══════════════════ */}
       {activeTab === 'contact' && (
         <div className="space-y-8 pt-4">
+          <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Text</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The headline, eyebrow and subheading shown on the Contact page hero section.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Top Label (eyebrow)</label>
+                <input value={contactHeroTagline} onChange={(e) => setContactHeroTagline(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Get In Touch" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <input value={contactHeroHeading} onChange={(e) => setContactHeroHeading(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Contact & Partnerships" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subheading</label>
+                <textarea value={contactHeroDescription} onChange={(e) => setContactHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="Whether you want to donate, partner, volunteer, or just learn more..." />
+              </div>
+              <div>
+                <Button onClick={() => {
+                  save('contact_hero_tagline', contactHeroTagline);
+                  save('contact_hero_heading', contactHeroHeading);
+                  save('contact_hero_description', contactHeroDescription);
+                }} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Text'}
+                </Button>
+              </div>
+            </div>
+          </div>
           <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Contact page hero section.</p>
