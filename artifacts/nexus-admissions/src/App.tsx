@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
 import {
@@ -138,7 +138,6 @@ function LogoMark({ compact = false }: { compact?: boolean }) {
         <GraduationCap size={20} strokeWidth={2.4} />
         <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[hsl(var(--accent))]" />
       </div>
-      {!compact && <div><p className="text-sm font-bold leading-none tracking-tight">Nexus</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] opacity-60">Admissions office</p></div>}
     </div>
   );
 }
@@ -872,7 +871,13 @@ function SiteSettingsPage() {
   const [donateNeedText, setDonateNeedText] = useState('');
   const [donateNeedVisible, setDonateNeedVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
+  const [saveToast, setSaveToast] = useState<{ title: string; description: string } | null>(null);
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const showSaveToast = (title: string, description: string) => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setSaveToast({ title, description });
+    saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
+  };
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'contact' | 'research' | 'students' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
@@ -1061,9 +1066,13 @@ function SiteSettingsPage() {
   }, [settings, loaded]);
 
   const save = async (key: string, value: string) => {
-    await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
-    setSaveMsg(`Saved "${key}"`);
-    setTimeout(() => setSaveMsg(''), 2000);
+    try {
+      await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      showSaveToast('Saved', `${label} has been updated successfully.`);
+    } catch {
+      showSaveToast('Error', 'Something went wrong. Please try again.');
+    }
   };
 
   if (settingsQuery.status === 'pending') return <PageLoader label="Loading site settings" />;
@@ -1075,7 +1084,6 @@ function SiteSettingsPage() {
           <h1 className="nexus-serif text-2xl font-bold">Site Settings</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">Manage content displayed on the public Application Portal.</p>
         </div>
-        {saveMsg && <span className="text-sm text-[hsl(160_43%_25%)] font-medium">{saveMsg}</span>}
       </div>
 
       {/* Tab Bar */}
@@ -3294,6 +3302,35 @@ function SiteSettingsPage() {
           </div>
         </div>
       </div>
+        </div>
+      )}
+      {/* ═══════════════════ SAVE TOAST ═══════════════════ */}
+      {saveToast && (
+        <div
+          className="fixed top-6 right-6 z-50 pointer-events-auto"
+          style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}
+        >
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
+              <Check size={16} strokeWidth={3} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+            </div>
+            <button
+              onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }}
+              className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <style>{`
+            @keyframes toastIn {
+              from { opacity: 0; transform: translateX(16px) scale(0.96); }
+              to   { opacity: 1; transform: translateX(0) scale(1); }
+            }
+          `}</style>
         </div>
       )}
     </div>
