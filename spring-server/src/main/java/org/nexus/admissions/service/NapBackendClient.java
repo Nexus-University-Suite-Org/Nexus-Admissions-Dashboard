@@ -78,17 +78,49 @@ public class NapBackendClient {
     ) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record NapProgramme(
-            Long id, String code, String name, String faculty,
-            int minimumUcePasses, double cutoffScore,
-            String essentialSubjects, String relevantSubjects, String desirableSubjects,
-            String entryRequirements, boolean isActive, int capacity
+    public record NapProgram(
+            Long id,
+            String programName,
+            String programCode,
+            String programType,
+            String awardQualification,
+            String programDescription,
+            String programObjectives,
+            String learningOutcomes,
+            String careerOpportunities,
+            String status,
+            String facultySchool,
+            String department,
+            String programCoordinator,
+            String campus,
+            Integer duration,
+            String durationUnit,
+            Integer numberOfYears,
+            Integer numberOfSemesters,
+            Integer semestersPerYear,
+            Integer totalCreditUnits,
+            String studyMode,
+            String academicCalendar,
+            String fees,
+            String admissionRequirements,
+            String curriculum,
+            String intakes,
+            String studyOptions,
+            String accreditation,
+            String shortDescription,
+            Double cutoffScore,
+            String essentialSubjects,
+            String relevantSubjects,
+            String desirableSubjects,
+            Integer minimumUcePasses,
+            Integer capacity,
+            String intakeYear
     ) {}
 
-    public List<NapProgramme> fetchProgrammes() {
+    public List<NapProgram> fetchProgrammes() {
         try {
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(properties.baseUrl() + "/api/v1/programmes"))
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/programs"))
                     .header("Accept", "application/json")
                     .GET()
                     .build();
@@ -96,7 +128,7 @@ public class NapBackendClient {
             if (response.statusCode() != 200) {
                 throw new RuntimeException("NAP-Backend returned " + response.statusCode());
             }
-            return List.of(objectMapper.readValue(response.body(), NapProgramme[].class));
+            return List.of(objectMapper.readValue(response.body(), NapProgram[].class));
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch programmes from NAP-Backend: " + e.getMessage(), e);
         }
