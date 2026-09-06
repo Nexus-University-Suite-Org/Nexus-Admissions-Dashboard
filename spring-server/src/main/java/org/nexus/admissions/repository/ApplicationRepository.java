@@ -14,6 +14,8 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     Optional<Application> findByPrn(String prn);
 
+    Optional<Application> findFirstByEmailIgnoreCaseOrderByCreatedAtDesc(String email);
+
     List<Application> findTopBySubmittedAtIsNotNullOrderBySubmittedAtDesc(Pageable pageable);
 
     long countByStatus(String status);

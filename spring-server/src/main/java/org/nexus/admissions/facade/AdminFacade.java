@@ -12,9 +12,11 @@ import java.util.stream.Collectors;
 import org.nexus.admissions.configuration.JwtUtil;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
+import org.nexus.admissions.dto.AdminUpdateRequest;
 import org.nexus.admissions.dto.ApplicationResponse;
 import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
+import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.model.Admin;
 import org.nexus.admissions.service.AdminService;
@@ -63,6 +65,34 @@ public class AdminFacade {
                 });
         System.out.println("[ADMIN-FACADE] Admin found: email=" + admin.getEmail() + ", fullName=" + admin.getFullName());
         return new AdminLoginResponse(null, admin.getEmail(), admin.getFullName());
+    }
+
+    @Transactional
+    public AdminLoginResponse updateProfile(Long adminId, AdminUpdateRequest request) {
+        Admin admin = adminService.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("Admin not found"));
+
+        if (!admin.getEmail().equals(request.email()) && adminService.existsByEmail(request.email())) {
+            throw new RuntimeException("Email already in use.");
+        }
+
+        admin.setFullName(request.fullName());
+        admin.setEmail(request.email());
+        Admin saved = adminService.update(admin);
+        return new AdminLoginResponse(null, saved.getEmail(), saved.getFullName());
+    }
+
+    @Transactional
+    public void changePassword(Long adminId, PasswordChangeRequest request) {
+        Admin admin = adminService.findById(adminId)
+                .orElseThrow(() -> new RuntimeException("Admin not found"));
+
+        if (!passwordEncoder.matches(request.currentPassword(), admin.getPasswordHash())) {
+            throw new RuntimeException("Current password is incorrect.");
+        }
+
+        admin.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        adminService.update(admin);
     }
 
     @Transactional

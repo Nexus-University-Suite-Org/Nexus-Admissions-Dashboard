@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, Route, Switch, Router as WouterRouter, useLocation, useParams } from 'wouter';
+import { useNotifications } from './hooks/useNotifications';
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,8 +25,10 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Megaphone,
   Menu,
   Pencil,
+  PanelLeftClose,
   RefreshCw,
   Search,
   Settings,
@@ -69,9 +72,24 @@ import NotFound from '@/pages/not-found';
 import './index.css';
 
 const NAD_API = 'http://localhost:8083';
+const NAP_API = 'http://localhost:8080';
 const queryClient = new QueryClient();
 setBaseUrl('http://localhost:8083');
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+function timeAgo(dateStr: string): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return 'Just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 function useGetSiteSettings() {
   return useQuery({
@@ -90,6 +108,16 @@ function useUpdateSiteSetting() {
         headers: { 'Content-Type': 'application/json' },
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'site-settings'] }),
+  });
+}
+
+type ActiveScheme = { academicYear: string; intakeMonth: string; status: string };
+
+function useGetActiveScheme() {
+  return useQuery({
+    queryKey: ['active-scheme'],
+    queryFn: () => customFetch<ActiveScheme[]>(`${NAP_API}/api/v1/admin/schemes`),
+    select: (schemes) => schemes.find((s) => s.status === 'OPEN') || null,
   });
 }
 
@@ -137,7 +165,6 @@ function LogoMark({ compact = false }: { compact?: boolean }) {
         <GraduationCap size={20} strokeWidth={2.4} />
         <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[hsl(var(--accent))]" />
       </div>
-      {!compact && <div><p className="text-sm font-bold leading-none tracking-tight">Nexus</p><p className="mt-1 text-[10px] uppercase tracking-[.2em] opacity-60">Admissions office</p></div>}
     </div>
   );
 }
@@ -179,45 +206,76 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
 function Shell({ children, identity }: { children: ReactNode; identity?: { fullName: string; email: string } }) {
   const [location, setLocation] = useLocation();
   const [mobileNav, setMobileNav] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [showBellDropdown, setShowBellDropdown] = useState(false);
+  const bellDropdownRef = useRef<HTMLDivElement>(null);
+  const { notifications, unreadCount, isConnected, markAsRead, markAllAsRead } = useNotifications();
+  const { data: activeScheme } = useGetActiveScheme();
+  const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake · ${activeScheme.intakeMonth}` : 'No active intake';
   const nav = [
     { href: '/admin', label: 'Overview', icon: LayoutDashboard },
     { href: '/admin/applications', label: 'Applications', icon: ClipboardList },
     { href: '/admin/programs', label: 'Programs', icon: GraduationCap },
+    { href: '/admin/schemes', label: 'Schemes', icon: Megaphone },
     { href: '/admin/settings', label: 'Site Settings', icon: Settings },
+    { href: '/admin/admin-settings', label: 'System Admin', icon: UserRound },
   ];
   const logout = () => {
     localStorage.removeItem('nap_admin_token');
     queryClient.clear();
     setLocation('/admin/login');
   };
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (bellDropdownRef.current && !bellDropdownRef.current.contains(e.target as Node)) {
+        setShowBellDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   return (
     <div className="nexus-shell flex">
       <button aria-label="Close navigation" data-testid="button-close-nav" onClick={() => setMobileNav(false)} className={`fixed inset-0 z-30 bg-[hsl(190_32%_12%/.4)] transition-opacity md:hidden ${mobileNav ? 'opacity-100' : 'pointer-events-none opacity-0'}`} />
-      <aside className={`nexus-sidebar fixed inset-y-0 left-0 z-40 flex w-[250px] -translate-x-full flex-col border-r border-[hsl(var(--sidebar-border))] px-5 py-6 transition-transform duration-300 md:sticky md:top-0 md:h-[100dvh] md:translate-x-0 ${mobileNav ? 'translate-x-0' : ''}`}>
-        <div className="mb-12 flex items-center justify-between"><LogoMark /><button data-testid="button-close-nav-mobile" aria-label="Close navigation" className="md:hidden" onClick={() => setMobileNav(false)}><X size={18} /></button></div>
-        <div className="mb-3 px-3 nexus-kicker opacity-45">Workspace</div>
-        <nav className="space-y-1" aria-label="Main navigation">
+      <aside className={`nexus-sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-[hsl(var(--sidebar-border))] px-5 py-6 transition-all duration-300 md:sticky md:top-0 md:h-[100dvh] -translate-x-full md:translate-x-0 ${mobileNav ? 'translate-x-0' : ''} ${collapsed ? 'w-[72px] px-3' : 'w-[250px]'}`}>
+        <div className="mb-12 flex items-center justify-between">
+          <div className={`${collapsed ? 'hidden' : ''}`}><LogoMark /></div>
+          {!collapsed && <button data-testid="button-close-nav-mobile" aria-label="Close navigation" className="md:hidden" onClick={() => setMobileNav(false)}><X size={18} /></button>}
+          <button data-testid="button-toggle-sidebar" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setCollapsed(!collapsed)} className="hidden md:flex items-center justify-center rounded-lg p-1.5 text-[hsl(var(--sidebar-foreground))] opacity-50 hover:bg-[hsl(var(--sidebar-accent))] hover:opacity-100 transition-opacity">
+            <PanelLeftClose size={18} className={`${collapsed ? 'rotate-180' : ''} transition-transform`} />
+          </button>
+        </div>
+        {!collapsed && <div className="mb-3 px-3 nexus-kicker opacity-45">Workspace</div>}
+        <nav className={`${collapsed ? 'space-y-1' : 'space-y-1'}`} aria-label="Main navigation">
           {nav.map(({ href, label, icon: Icon }) => {
             const active = href === '/admin' ? location === '/admin' : location.startsWith(href);
-            return <Link key={href} href={href} data-testid={`link-${label.toLowerCase()}`} onClick={() => setMobileNav(false)} className={`group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all ${active ? 'bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-accent-foreground))] shadow-sm' : 'opacity-65 hover:bg-[hsl(var(--sidebar-accent)/.65)] hover:opacity-100'}`}><Icon size={17} strokeWidth={active ? 2.2 : 1.8} /><span>{label}</span>{label === 'Applications' && <span className="ml-auto rounded-md bg-[hsl(var(--sidebar-primary)/.18)] px-1.5 py-0.5 text-[10px] font-bold text-[hsl(var(--sidebar-primary))]">LIVE</span>}</Link>;
+            return (
+              <Link key={href} href={href} data-testid={`link-${label.toLowerCase()}`} onClick={() => setMobileNav(false)} title={collapsed ? label : undefined} className={`group flex items-center gap-3 rounded-xl ${collapsed ? 'justify-center px-2 py-3' : 'px-3 py-3'} text-sm font-medium transition-all ${active ? 'bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-accent-foreground))] shadow-sm' : 'opacity-65 hover:bg-[hsl(var(--sidebar-accent)/.65)] hover:opacity-100'}`}>
+                <Icon size={17} strokeWidth={active ? 2.2 : 1.8} />
+                {!collapsed && <span>{label}</span>}
+                {!collapsed && label === 'Applications' && <span className="ml-auto rounded-md bg-[hsl(var(--sidebar-primary)/.18)] px-1.5 py-0.5 text-[10px] font-bold text-[hsl(var(--sidebar-primary))]">LIVE</span>}
+              </Link>
+            );
           })}
         </nav>
         <div className="mt-auto">
-          <div className="mb-5 rounded-2xl border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent)/.45)] p-4">
-            <div className="mb-3 flex items-center gap-2 text-[hsl(var(--sidebar-primary))]"><ShieldCheck size={15} /><span className="nexus-kicker">Trust & privacy</span></div>
-            <p className="text-xs leading-5 opacity-60">Student records are restricted to authorised admissions staff.</p>
-          </div>
-          <div className="flex items-center gap-3 border-t border-[hsl(var(--sidebar-border))] pt-4">
-            <div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--sidebar-primary))] text-xs font-bold text-[hsl(var(--sidebar-primary-foreground))]">{initials(identity?.fullName)}</div>
-            <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{identity?.fullName || 'Admissions staff'}</p><p className="truncate text-[10px] opacity-50">{identity?.email}</p></div>
-            <button data-testid="button-logout" aria-label="Sign out" onClick={logout} className="opacity-50 transition-opacity hover:opacity-100"><LogOut size={16} /></button>
+          {!collapsed && (
+            <div className="mb-5 rounded-2xl border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent)/.45)] p-4">
+              <div className="mb-3 flex items-center gap-2 text-[hsl(var(--sidebar-primary))]"><ShieldCheck size={15} /><span className="nexus-kicker">Trust & privacy</span></div>
+              <p className="text-xs leading-5 opacity-60">Student records are restricted to authorised admissions staff.</p>
+            </div>
+          )}
+          <div className={`flex items-center gap-3 border-t border-[hsl(var(--sidebar-border))] pt-4 ${collapsed ? 'justify-center' : ''}`}>
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--sidebar-primary))] text-xs font-bold text-[hsl(var(--sidebar-primary-foreground))]">{initials(identity?.fullName)}</div>
+            {!collapsed && <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold">{identity?.fullName || 'Admissions staff'}</p><p className="truncate text-[10px] opacity-50">{identity?.email}</p></div>}
+            {!collapsed && <button data-testid="button-logout" aria-label="Sign out" onClick={logout} className="opacity-50 transition-opacity hover:opacity-100"><LogOut size={16} /></button>}
           </div>
         </div>
       </aside>
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border)/.8)] bg-[hsl(var(--background)/.92)] px-5 backdrop-blur-md md:px-10">
           <div className="flex items-center gap-3"><button data-testid="button-open-nav" aria-label="Open navigation" onClick={() => setMobileNav(true)} className="rounded-lg p-2 hover:bg-[hsl(var(--muted))] md:hidden"><Menu size={20} /></button><div className="hidden md:block nexus-kicker text-[hsl(var(--muted-foreground))]">NEXUS / REGISTRARIAL SERVICES</div><span className="md:hidden"><LogoMark compact /></span></div>
-          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">2025 intake · Semester one</span><button data-testid="button-notifications" aria-label="Notifications" className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} /><span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-[hsl(var(--destructive))]" /></button></div>
+          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">{intakeLabel}</span><div ref={bellDropdownRef} className="relative"><button data-testid="button-notifications" aria-label="Notifications" onClick={() => setShowBellDropdown(!showBellDropdown)} className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} />{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showBellDropdown && (<div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl z-50"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3"><span className="text-sm font-semibold text-[hsl(var(--card-foreground))]">Notifications</span>{unreadCount > 0 && (<button onClick={() => markAllAsRead()} className="text-xs text-[hsl(var(--primary))] hover:underline">Mark all read</button>)}</div><div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? (<div className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">No notifications yet</div>) : (notifications.map((n) => (<button key={n.id} onClick={() => { if (!n.read) markAsRead(n.id); }} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[hsl(var(--muted))] ${!n.read ? 'bg-[hsl(var(--muted)/.5)]' : ''}`}><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!n.read ? 'bg-[hsl(var(--primary))]' : 'bg-transparent'}`} /><div className="min-w-0 flex-1"><p className={`text-xs ${!n.read ? 'font-semibold text-[hsl(var(--card-foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>{n.title}</p><p className="mt-0.5 truncate text-[11px] text-[hsl(var(--muted-foreground))]">{n.message}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{timeAgo(n.createdAt)}</p></div></button>)))}</div>{notifications.length > 0 && (<div className="border-t border-[hsl(var(--border))] px-4 py-2 text-center"><span className="text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{isConnected ? 'Live' : 'Reconnecting...'}</span></div>)}</div>)}</div></div>
         </header>
         <main className="mx-auto max-w-[1440px] px-5 py-7 md:px-10 md:py-10">{children}</main>
       </div>
@@ -413,7 +471,10 @@ function StatCard({ label, value, note, icon: Icon, tone = 'primary', delay = ''
 function DashboardPage() {
   const stats = useGetAdminDashboardStats();
   const recent = useGetAdminRecentApplications({ limit: 6 });
+  const { data: activeScheme } = useGetActiveScheme();
   const [, setLocation] = useLocation();
+  const intakeYear = activeScheme?.academicYear || '—';
+  const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake` : 'No active intake';
 
   console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
   console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
@@ -429,13 +490,13 @@ function DashboardPage() {
   return <div className="space-y-8">
     <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">Tuesday, 18 June 2025</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">Good morning, team.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Here is the shape of the admissions desk today.</p></div><Button data-testid="button-view-all-applications" onClick={() => setLocation('/admin/applications')} variant="outline" className="w-fit gap-2 rounded-xl">Review applications <ArrowRight size={15} /></Button></section>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard label="Total applications" value={data?.totalApplications ?? 0} note="Across the 2025 intake" icon={UsersRound} delay="delay-1" />
+      <StatCard label="Total applications" value={data?.totalApplications ?? 0} note={`Across the ${intakeLabel}`} icon={UsersRound} delay="delay-1" />
       <StatCard label="Awaiting review" value={data?.pendingReview ?? 0} note="Needs an admissions decision" icon={Clock3} tone="gold" delay="delay-2" />
       <StatCard label="Admitted" value={data?.admitted ?? 0} note="Offers ready to progress" icon={CheckCircle2} tone="green" delay="delay-3" />
       <StatCard label="Draft records" value={data?.draft ?? 0} note="Not yet submitted" icon={FileText} tone="red" delay="delay-3" />
     </section>
     <section className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
-      <div className="nexus-card p-6 md:p-7"><div className="flex items-start justify-between"><div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Application volume</p><h2 className="mt-2 text-lg font-semibold">Monthly submissions</h2></div><div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[11px] text-[hsl(var(--muted-foreground))]"><BarChart3 size={14} /> 2025 intake</div></div><div className="mt-8 flex h-44 items-end gap-2 border-b border-l border-[hsl(var(--border))] px-3 pb-0 sm:gap-4">{trendEntries.length ? trendEntries.map(([month, value]) => <div key={month} className="group flex h-full flex-1 flex-col items-center justify-end gap-2"><span className="text-[10px] font-semibold opacity-0 transition-opacity group-hover:opacity-100">{value}</span><div className="w-full max-w-10 rounded-t-md bg-[hsl(var(--primary))] transition-all duration-500 group-hover:bg-[hsl(var(--accent))]" style={{ height: `${Math.max((value / maxTrend) * 82, 5)}%` }} /><span className="nexus-mono text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{month.slice(0, 3)}</span></div>) : <div className="flex w-full items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">No monthly activity yet</div>}</div></div>
+      <div className="nexus-card p-6 md:p-7"><div className="flex items-start justify-between"><div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Application volume</p><h2 className="mt-2 text-lg font-semibold">Monthly submissions</h2></div><div className="flex items-center gap-2 rounded-lg bg-[hsl(var(--muted))] px-2.5 py-1.5 text-[11px] text-[hsl(var(--muted-foreground))]"><BarChart3 size={14} /> {intakeLabel}</div></div><div className="mt-8 flex h-44 items-end gap-2 border-b border-l border-[hsl(var(--border))] px-3 pb-0 sm:gap-4">{trendEntries.length ? trendEntries.map(([month, value]) => <div key={month} className="group flex h-full flex-1 flex-col items-center justify-end gap-2"><span className="text-[10px] font-semibold opacity-0 transition-opacity group-hover:opacity-100">{value}</span><div className="w-full max-w-10 rounded-t-md bg-[hsl(var(--primary))] transition-all duration-500 group-hover:bg-[hsl(var(--accent))]" style={{ height: `${Math.max((value / maxTrend) * 82, 5)}%` }} /><span className="nexus-mono text-[9px] uppercase text-[hsl(var(--muted-foreground))]">{month.slice(0, 3)}</span></div>) : <div className="flex w-full items-center justify-center text-sm text-[hsl(var(--muted-foreground))]">No monthly activity yet</div>}</div></div>
       <div className="nexus-card p-6 md:p-7"><div className="flex items-start justify-between"><div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Decision mix</p><h2 className="mt-2 text-lg font-semibold">Where things stand</h2></div><SlidersHorizontal size={17} className="text-[hsl(var(--muted-foreground))]" /></div><div className="mt-8 space-y-4">{[['Admitted', data?.admitted, 'bg-[hsl(160_43%_40%)]'], ['Waitlisted', data?.waitlisted, 'bg-[hsl(203_51%_50%)]'], ['Rejected', data?.rejected, 'bg-[hsl(var(--destructive))]'], ['In review', data?.pendingReview, 'bg-[hsl(var(--accent))]']].map(([label, value, color]) => <div key={label as string}><div className="mb-1.5 flex justify-between text-xs"><span>{label as string}</span><span className="nexus-mono text-[10px] text-[hsl(var(--muted-foreground))]">{value as number || 0}</span></div><div className="h-2 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(((Number(value) || 0) / (data?.totalApplications || 1)) * 100, 100)}%` }} /></div></div>)}</div></div>
     </section>
     <section className="nexus-card overflow-hidden"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-6 py-5"><div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Latest arrivals</p><h2 className="mt-1 text-lg font-semibold">Recently submitted</h2></div><Link href="/admin/applications" data-testid="link-recent-all" className="flex items-center gap-1 text-xs font-semibold text-[hsl(var(--primary))] hover:underline">See all <ArrowRight size={14} /></Link></div>{recent.isLoading ? <div className="space-y-4 p-6">{[1, 2, 3].map((n) => <div key={n} className="h-12 animate-pulse rounded-lg bg-[hsl(var(--muted))]" />)}</div> : recent.isError ? <div className="p-6"><ErrorState retry={() => recent.refetch()} /></div> : recent.data?.length ? <div className="divide-y divide-[hsl(var(--border))]">{recent.data.map((app) => <button data-testid={`row-recent-${app.id}`} key={app.id} onClick={() => setLocation(`/admin/applications/${app.id}`)} className="flex w-full items-center gap-4 px-6 py-4 text-left transition-colors hover:bg-[hsl(var(--muted)/.45)]"><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{app.firstName} {app.lastName}</p><p className="mt-0.5 truncate text-xs text-[hsl(var(--muted-foreground))]">{app.prn} · {app.programChoice1 || 'Programme not selected'}</p></div><div className="hidden text-right sm:block"><p className="text-xs text-[hsl(var(--muted-foreground))]">{formatDate(app.submittedAt || app.createdAt)}</p><div className="mt-1"><StatusPill status={app.status} /></div></div><ChevronRight size={16} className="text-[hsl(var(--muted-foreground))]" /></button>)}</div> : <EmptyState title="The desk is quiet" detail="Newly submitted applications will appear here for a quick first look." />}</section>
@@ -738,6 +799,9 @@ function SiteSettingsPage() {
   const [partnersHeroImage, setPartnersHeroImage] = useState('');
   const [donateHeroImage, setDonateHeroImage] = useState('');
   const [contactHeroImage, setContactHeroImage] = useState('');
+  const [contactHeroTagline, setContactHeroTagline] = useState('');
+  const [contactHeroHeading, setContactHeroHeading] = useState('');
+  const [contactHeroDescription, setContactHeroDescription] = useState('');
   const [researchHeroImage, setResearchHeroImage] = useState('');
   const [studentsHeroImage, setStudentsHeroImage] = useState('');
   const [whatWeTeachTagline, setWhatWeTeachTagline] = useState('');
@@ -867,7 +931,14 @@ function SiteSettingsPage() {
   const [donateNeedText, setDonateNeedText] = useState('');
   const [donateNeedVisible, setDonateNeedVisible] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const [saveMsg, setSaveMsg] = useState('');
+  const [saveToast, setSaveToast] = useState<{ title: string; description: string } | null>(null);
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
+  const showSaveToast = (title: string, description: string) => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setSaveToast({ title, description });
+    saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
+  };
+
   const [activeTab, setActiveTab] = useState<'general' | 'home' | 'about' | 'news' | 'programs' | 'stories' | 'gallery' | 'impact' | 'partners' | 'donate' | 'contact' | 'research' | 'students' | 'footer' | 'splash'>('general');
 
   useEffect(() => {
@@ -920,6 +991,9 @@ function SiteSettingsPage() {
       setPartnersHeroImage(getSetting('partners_hero_image'));
       setDonateHeroImage(getSetting('donate_hero_image'));
       setContactHeroImage(getSetting('contact_hero_image'));
+      setContactHeroTagline(getSetting('contact_hero_tagline'));
+      setContactHeroHeading(getSetting('contact_hero_heading'));
+      setContactHeroDescription(getSetting('contact_hero_description'));
       setResearchHeroImage(getSetting('research_hero_image'));
       setStudentsHeroImage(getSetting('students_hero_image'));
       setWhatWeTeachTagline(getSetting('what_we_teach_tagline'));
@@ -1053,9 +1127,13 @@ function SiteSettingsPage() {
   }, [settings, loaded]);
 
   const save = async (key: string, value: string) => {
-    await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
-    setSaveMsg(`Saved "${key}"`);
-    setTimeout(() => setSaveMsg(''), 2000);
+    try {
+      await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      showSaveToast('Saved', `${label} has been updated successfully.`);
+    } catch {
+      showSaveToast('Error', 'Something went wrong. Please try again.');
+    }
   };
 
   if (settingsQuery.status === 'pending') return <PageLoader label="Loading site settings" />;
@@ -1067,7 +1145,6 @@ function SiteSettingsPage() {
           <h1 className="nexus-serif text-2xl font-bold">Site Settings</h1>
           <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">Manage content displayed on the public Application Portal.</p>
         </div>
-        {saveMsg && <span className="text-sm text-[hsl(160_43%_25%)] font-medium">{saveMsg}</span>}
       </div>
 
       {/* Tab Bar */}
@@ -3187,6 +3264,33 @@ function SiteSettingsPage() {
       {activeTab === 'contact' && (
         <div className="space-y-8 pt-4">
           <div className="nexus-card rounded-2xl border p-6">
+            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Text</h2>
+            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The headline, eyebrow and subheading shown on the Contact page hero section.</p>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Top Label (eyebrow)</label>
+                <input value={contactHeroTagline} onChange={(e) => setContactHeroTagline(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Get In Touch" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
+                <input value={contactHeroHeading} onChange={(e) => setContactHeroHeading(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Contact & Partnerships" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subheading</label>
+                <textarea value={contactHeroDescription} onChange={(e) => setContactHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="Whether you want to donate, partner, volunteer, or just learn more..." />
+              </div>
+              <div>
+                <Button onClick={() => {
+                  save('contact_hero_tagline', contactHeroTagline);
+                  save('contact_hero_heading', contactHeroHeading);
+                  save('contact_hero_description', contactHeroDescription);
+                }} disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Text'}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="nexus-card rounded-2xl border p-6">
             <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Image</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The background image shown on the Contact page hero section.</p>
             <HeroImageField label="Contact Page Hero Image" value={contactHeroImage} onChange={setContactHeroImage} onSave={(url) => save('contact_hero_image', url)} saving={updateMutation.isPending} />
@@ -3261,15 +3365,44 @@ function SiteSettingsPage() {
       </div>
         </div>
       )}
+      {/* ═══════════════════ SAVE TOAST ═══════════════════ */}
+      {saveToast && (
+        <div
+          className="fixed top-6 right-6 z-50 pointer-events-auto"
+          style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}
+        >
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
+              <Check size={16} strokeWidth={3} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+            </div>
+            <button
+              onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }}
+              className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors"
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <style>{`
+            @keyframes toastIn {
+              from { opacity: 0; transform: translateX(16px) scale(0.96); }
+              to   { opacity: 1; transform: translateX(0) scale(1); }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 }
 
 import ProgramsPage from './pages/ProgramsPage';
+import SchemesPage from './pages/SchemesPage';
 import CategoriesPage from './pages/CategoriesPage';
 
-function HomeRedirect() {
-  const [, setLocation] = useLocation();
+function HomeRedirect() {  const [, setLocation] = useLocation();
   useEffect(() => { setLocation(localStorage.getItem('nap_admin_token') ? '/admin' : '/admin/login'); }, [setLocation]);
   return <PageLoader label="Opening Nexus admissions" />;
 }
@@ -3556,13 +3689,169 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
   );
 }
 
+function AdminSettingsPage() {
+  const { data: adminProfile } = useGetAdminMe({ query: { enabled: Boolean(localStorage.getItem('nap_admin_token')), retry: false, queryKey: getGetAdminMeQueryKey() } });
+  const updateProfileMutation = useMutation({
+    mutationFn: (data: { fullName: string; email: string }) =>
+      customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+  const changePasswordMutation = useMutation({
+    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
+      customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+        method: 'PUT',
+        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  });
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [saveToast, setSaveToast] = useState<{ title: string; description: string } | null>(null);
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const showSaveToast = (title: string, description: string) => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
+    setSaveToast({ title, description });
+    saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
+  };
+
+  useEffect(() => {
+    if (adminProfile && !loaded) {
+      setFullName(adminProfile.fullName || '');
+      setEmail(adminProfile.email || '');
+      setLoaded(true);
+    }
+  }, [adminProfile, loaded]);
+
+  if (!loaded) return <PageLoader label="Loading administrator profile" />;
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="nexus-serif text-2xl font-bold">System Administrator</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Manage your admin account credentials.</p>
+        </div>
+      </div>
+
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <UserRound size={18} className="text-[hsl(var(--primary))]" />
+          <h2 className="nexus-serif text-lg font-semibold">Administrator Profile</h2>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-5">Manage your account name and email address.</p>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Full Name</label>
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="e.g. System Administrator" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Email Address</label>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="e.g. admin@nexus.edu" />
+          </div>
+          <Button onClick={async () => {
+            if (!fullName.trim() || !email.trim()) {
+              showSaveToast('Error', 'Name and email are required.');
+              return;
+            }
+            try {
+              const result = await updateProfileMutation.mutateAsync({ fullName, email });
+              if (result.email) setEmail(result.email);
+              if (result.fullName) setFullName(result.fullName);
+              showSaveToast('Profile Updated', 'Your administrator profile has been saved.');
+            } catch (err: any) {
+              showSaveToast('Error', err?.message || 'Failed to update profile.');
+            }
+          }} disabled={updateProfileMutation.isPending}>
+            {updateProfileMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Profile'}
+          </Button>
+        </div>
+      </div>
+
+      <div className="nexus-card rounded-2xl border p-6">
+        <div className="flex items-center gap-3 mb-1">
+          <ShieldCheck size={18} className="text-[hsl(var(--primary))]" />
+          <h2 className="nexus-serif text-lg font-semibold">Change Password</h2>
+        </div>
+        <p className="text-xs text-[hsl(var(--muted-foreground))] mb-5">Update your login password. You must enter your current password to confirm.</p>
+        <div className="space-y-4 max-w-md">
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Current Password</label>
+            <Input value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} type="password" placeholder="Enter current password" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">New Password</label>
+            <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" placeholder="At least 6 characters" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Confirm New Password</label>
+            <Input value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} type="password" placeholder="Re-enter new password" />
+          </div>
+          <Button onClick={async () => {
+            if (!currentPassword || !newPassword) {
+              showSaveToast('Error', 'All password fields are required.');
+              return;
+            }
+            if (newPassword.length < 6) {
+              showSaveToast('Error', 'New password must be at least 6 characters.');
+              return;
+            }
+            if (newPassword !== confirmPassword) {
+              showSaveToast('Error', 'New passwords do not match.');
+              return;
+            }
+            try {
+              await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
+              setCurrentPassword('');
+              setNewPassword('');
+              setConfirmPassword('');
+              showSaveToast('Password Changed', 'Your password has been updated successfully.');
+            } catch (err: any) {
+              showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
+            }
+          }} disabled={changePasswordMutation.isPending}>
+            {changePasswordMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Change Password'}
+          </Button>
+        </div>
+      </div>
+
+      {saveToast && (
+        <div className="fixed top-6 right-6 z-50 pointer-events-auto" style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}>
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
+              <Check size={16} strokeWidth={3} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+            </div>
+            <button onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }} className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors">
+              <X size={14} />
+            </button>
+          </div>
+          <style>{`@keyframes toastIn { from { opacity: 0; transform: translateX(16px) scale(0.96); } to { opacity: 1; transform: translateX(0) scale(1); } }`}</style>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Router() {
   return <RoutedErrorBoundary><Switch>
     <Route path="/" component={HomeRedirect} />
     <Route path="/admin/login" component={LoginPage} />
     <Route path="/admin/programs/categories"><AuthGate><CategoriesPage /></AuthGate></Route>
     <Route path="/admin/programs"><AuthGate><ProgramsPage /></AuthGate></Route>
+    <Route path="/admin/schemes"><AuthGate><SchemesPage /></AuthGate></Route>
     <Route path="/admin/settings"><AuthGate><SiteSettingsPage /></AuthGate></Route>
+    <Route path="/admin/admin-settings"><AuthGate><AdminSettingsPage /></AuthGate></Route>
     <Route path="/admin/applications/:id"><AuthGate><ApplicationDetailPage /></AuthGate></Route>
     <Route path="/admin/applications"><AuthGate><ApplicationsPage /></AuthGate></Route>
     <Route path="/admin"><AuthGate><DashboardPage /></AuthGate></Route>

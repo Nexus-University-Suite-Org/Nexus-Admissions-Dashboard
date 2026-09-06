@@ -20,6 +20,8 @@ type Program = {
   imageUrl: string; shortDescription: string; fullDescription: string;
   featured: boolean; displayOrder: number; createdBy: string; createdAt: string;
   updatedBy: string; updatedAt: string; categoryNames: string[];
+  cutoffScore: number; essentialSubjects: string; relevantSubjects: string; desirableSubjects: string;
+  minimumUcePasses: number; capacity: number; intakeYear: string;
 };
 
 type ProgramCategory = {
@@ -84,14 +86,20 @@ export default function ProgramsPage() {
     return <ProgramForm program={editingProgram} categories={categories} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
   }
 
+  const subjects = (raw: string) => {
+    const parsed = parseJson<string[]>(raw, []);
+    if (parsed.length && raw.trim().startsWith('[')) return parsed;
+    return raw ? raw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="nexus-serif text-2xl font-bold">Programs</h1>
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">Manage all academic programs offered by your institution.</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">Browse all academic programmes offered by your institution and manage their public marketing profiles.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Link href="/admin/programs/categories">
             <Button variant="outline" size="sm"><BookOpen size={14} className="mr-1" /> Categories</Button>
           </Link>
@@ -102,16 +110,13 @@ export default function ProgramsPage() {
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search programs..." className="pl-9" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search programmes..." className="pl-9" />
         </div>
-        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm">
-          <option value="">All Types</option>
-          {PROGRAM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm">
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <h2 className="nexus-serif text-lg font-bold">All Programmes</h2>
+        <span className="text-[10px] px-2 py-1 rounded-full bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))] font-medium">{filtered.length} of {programs.length}</span>
       </div>
 
       {isLoading ? (
@@ -119,7 +124,7 @@ export default function ProgramsPage() {
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <GraduationCap size={40} className="mx-auto mb-4 opacity-30" />
-          <p className="text-sm text-[hsl(var(--muted-foreground))]">No programs found.</p>
+          <p className="text-sm text-[hsl(var(--muted-foreground))]">No programmes found. Click <strong>Add Program</strong> to create one.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -134,11 +139,14 @@ export default function ProgramsPage() {
                     {p.programType && <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{p.programType}</span>}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full ${statusColor(p.status)}`}>{p.status}</span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))]">
+                  <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))] flex-wrap">
                     {p.facultySchool && <span>{p.facultySchool}</span>}
                     {p.duration && <span>{p.duration} {p.durationUnit || 'years'}</span>}
                     {p.totalCreditUnits && <span>{p.totalCreditUnits} credits</span>}
                     {p.studyMode && <span>{p.studyMode}</span>}
+                    <span>Min UCE passes: {p.minimumUcePasses ?? 5}</span>
+                    {p.capacity ? <span>Capacity: {p.capacity}</span> : null}
+                    {p.cutoffScore ? <span className="text-accent">Cutoff: {p.cutoffScore}</span> : null}
                     {p.categoryNames?.length > 0 && <span className="text-accent">{p.categoryNames.join(', ')}</span>}
                   </div>
                 </div>
@@ -165,6 +173,32 @@ export default function ProgramsPage() {
                     }
                     return null;
                   })()}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Min UCE passes:</span> <span className="font-medium">{p.minimumUcePasses ?? 5}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Capacity:</span> <span className="font-medium">{p.capacity || '—'}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Intake Year:</span> <span className="font-medium">{p.intakeYear || '—'}</span></div>
+                    <div><span className="text-[hsl(var(--muted-foreground))]">Cutoff:</span> <span className="font-medium">{p.cutoffScore || '—'}</span></div>
+                  </div>
+                  <div className="grid md:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Essential Subjects</p>
+                      {subjects(p.essentialSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.essentialSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Relevant Subjects</p>
+                      {subjects(p.relevantSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.relevantSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-[hsl(var(--muted-foreground))] mb-1.5">Desirable Subjects</p>
+                      {subjects(p.desirableSubjects).length ? (
+                        <div className="flex flex-wrap gap-1.5">{subjects(p.desirableSubjects).map(s => <span key={s} className="px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-100">{s}</span>)}</div>
+                      ) : <p className="text-[hsl(var(--muted-foreground))]">—</p>}
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -200,6 +234,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     imageUrl: program?.imageUrl || '', shortDescription: program?.shortDescription || '',
     fullDescription: program?.fullDescription || '', featured: program?.featured || false,
     displayOrder: program?.displayOrder || 0,
+    cutoffScore: program?.cutoffScore || 0, essentialSubjects: program?.essentialSubjects || '',
+    relevantSubjects: program?.relevantSubjects || '', desirableSubjects: program?.desirableSubjects || '',
+    minimumUcePasses: program?.minimumUcePasses || 5, capacity: program?.capacity || 100,
+    intakeYear: program?.intakeYear || '',
   });
 
   const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
@@ -805,6 +843,15 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             )}
             {section === 'admission' && (
               <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Field label="Cutoff Score (AGP)" value={form.cutoffScore} onChange={v => set('cutoffScore', parseFloat(v) || 0)} type="number" placeholder="e.g. 26" />
+                  <Field label="Min UCE Passes" value={form.minimumUcePasses} onChange={v => set('minimumUcePasses', parseInt(v) || 5)} type="number" />
+                  <Field label="Capacity" value={form.capacity} onChange={v => set('capacity', parseInt(v) || 100)} type="number" />
+                  <Field label="Intake Year" value={form.intakeYear} onChange={v => set('intakeYear', v)} placeholder="e.g. 2026" />
+                </div>
+                <Field label="Essential Subjects" value={form.essentialSubjects} onChange={v => set('essentialSubjects', v)} placeholder="Comma-separated, e.g. Mathematics, Physics, Chemistry" />
+                <Field label="Relevant Subjects" value={form.relevantSubjects} onChange={v => set('relevantSubjects', v)} placeholder="Comma-separated" />
+                <Field label="Desirable Subjects" value={form.desirableSubjects} onChange={v => set('desirableSubjects', v)} placeholder="Comma-separated" />
                 <Field label="Minimum Entry Qualification" value={admissionReq.min_qualification} onChange={v => setAdmissionReq(f => ({ ...f, min_qualification: v }))} />
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Minimum Grade" value={admissionReq.min_grade} onChange={v => setAdmissionReq(f => ({ ...f, min_grade: v }))} />

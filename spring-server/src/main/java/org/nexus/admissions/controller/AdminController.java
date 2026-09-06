@@ -6,9 +6,11 @@ import java.util.Map;
 import org.nexus.admissions.configuration.JwtAuthFilter;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
+import org.nexus.admissions.dto.AdminUpdateRequest;
 import org.nexus.admissions.dto.ApplicationResponse;
 import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
+import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +48,23 @@ public class AdminController {
         AdminLoginResponse response = adminFacade.me(principal.id());
         System.out.println("[ADMIN-CONTROLLER] /auth/me returning: email=" + response.email() + ", fullName=" + response.fullName());
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/auth/profile")
+    public ResponseEntity<AdminLoginResponse> updateProfile(
+            Authentication authentication,
+            @Valid @RequestBody AdminUpdateRequest request) {
+        JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
+        return ResponseEntity.ok(adminFacade.updateProfile(principal.id(), request));
+    }
+
+    @PutMapping("/auth/password")
+    public ResponseEntity<Map<String, String>> changePassword(
+            Authentication authentication,
+            @Valid @RequestBody PasswordChangeRequest request) {
+        JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
+        adminFacade.changePassword(principal.id(), request);
+        return ResponseEntity.ok(Map.of("status", "ok", "message", "Password changed successfully."));
     }
 
     @GetMapping("/dashboard/stats")

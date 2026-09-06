@@ -78,6 +78,15 @@ public class Application {
     @Column(name = "qualification_results", columnDefinition = "text")
     private String qualificationResults;
 
+    @Column(name = "registration_number", length = 50)
+    private String registrationNumber;
+
+    @Column(name = "student_number", length = 50)
+    private String studentNumber;
+
+    @Column(name = "start_date", length = 50)
+    private String startDate;
+
     @Column(name = "study_mode", length = 50)
     private String studyMode;
 
