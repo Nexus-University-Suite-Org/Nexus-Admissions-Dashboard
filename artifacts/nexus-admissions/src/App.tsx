@@ -71,10 +71,10 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import './index.css';
 
-const NAD_API = 'http://localhost:8083';
-const NAP_API = 'http://localhost:8080';
+const NAD_API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8083';
+const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
 const queryClient = new QueryClient();
-setBaseUrl('http://localhost:8083');
+setBaseUrl(NAD_API);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
 
 function timeAgo(dateStr: string): string {
@@ -364,7 +364,7 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
@@ -553,7 +553,7 @@ function DetailField({ label, value, mono = false }: { label: string; value?: st
   return <div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p><p data-testid={`detail-${label.toLowerCase().replaceAll(' ', '-')}`} className={`mt-1.5 text-sm ${mono ? 'nexus-mono text-xs' : ''}`}>{typeof value === 'boolean' ? (value ? 'Verified' : 'Not verified') : value || '—'}</p></div>;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = NAD_API;
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 function DocumentField({ label, url }: { label: string; url?: string | null }) {
@@ -583,7 +583,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         const url = data.url || data.fileUrl || '';
@@ -1294,7 +1294,7 @@ function SiteSettingsPage() {
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
-                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
                       if (res.ok) {
                         const data = await res.json();
                         const url = data.url || data.fileUrl || '';
@@ -3431,7 +3431,7 @@ function StudentStoriesManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3562,7 +3562,7 @@ function PhotoGalleryManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;

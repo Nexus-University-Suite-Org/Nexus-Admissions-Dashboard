@@ -20,7 +20,7 @@ import {
   Search,
 } from "lucide-react";
 
-const NAP_API = "http://localhost:8080";
+const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? "http://localhost:8080";
 
 type SchemeProgram = {
   id: number;

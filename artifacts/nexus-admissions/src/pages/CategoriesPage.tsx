@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Pencil, Trash2, ArrowLeft, X, GripVertical } from 'lucide-react';
 
-const NAP_API = 'http://localhost:8080';
+const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
 
 type ProgramCategory = {
   id: number; name: string; description: string; displayOrder: number;

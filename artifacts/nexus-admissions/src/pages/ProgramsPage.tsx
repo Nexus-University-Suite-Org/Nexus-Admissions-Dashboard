@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle } from 'lucide-react';
 
-const NAP_API = 'http://localhost:8080';
+const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
 
 type Program = {
   id: number; programName: string; programCode: string; programType: string;
