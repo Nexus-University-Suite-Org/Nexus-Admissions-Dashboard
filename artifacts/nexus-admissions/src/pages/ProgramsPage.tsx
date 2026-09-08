@@ -13,7 +13,7 @@ type Program = {
   awardQualification: string; programDescription: string; programObjectives: string;
   learningOutcomes: string; careerOpportunities: string; status: string;
   facultySchool: string; department: string; programCoordinator: string; campus: string;
-  duration: number; durationUnit: string; numberOfYears: number; numberOfSemesters: number;
+  durationUnit: string; numberOfYears: number;
   semestersPerYear: number; totalCreditUnits: number; studyMode: string; academicCalendar: string;
   fees: string; admissionRequirements: string; curriculum: string; intakes: string;
   studyOptions: string; accreditation: string; documents: string;
@@ -141,7 +141,7 @@ export default function ProgramsPage() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-[hsl(var(--muted-foreground))] flex-wrap">
                     {p.facultySchool && <span>{p.facultySchool}</span>}
-                    {p.duration && <span>{p.duration} {p.durationUnit || 'years'}</span>}
+                    {p.numberOfYears ? <span>{p.numberOfYears} {p.durationUnit || 'years'}</span> : null}
                     {p.totalCreditUnits && <span>{p.totalCreditUnits} credits</span>}
                     {p.studyMode && <span>{p.studyMode}</span>}
                     <span>Min UCE passes: {p.minimumUcePasses ?? 5}</span>
@@ -227,8 +227,8 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     careerOpportunities: program?.careerOpportunities || '', status: program?.status || 'Active',
     facultySchool: program?.facultySchool || '', department: program?.department || '',
     programCoordinator: program?.programCoordinator || '', campus: program?.campus || '',
-    duration: program?.duration || 0, durationUnit: program?.durationUnit || 'Years',
-    numberOfYears: program?.numberOfYears || 1, numberOfSemesters: program?.numberOfSemesters || 2,
+    durationUnit: program?.durationUnit || 'Years',
+    numberOfYears: program?.numberOfYears || 1,
     semestersPerYear: program?.semestersPerYear || 2, totalCreditUnits: program?.totalCreditUnits || 0,
     studyMode: program?.studyMode || '', academicCalendar: program?.academicCalendar || 'Semester',
     imageUrl: program?.imageUrl || '', shortDescription: program?.shortDescription || '',
@@ -501,7 +501,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
       case 'identity': return Boolean(form.programName && form.programCode && form.programType);
       case 'about': return Boolean(form.programDescription);
       case 'org': return Boolean(form.facultySchool || form.department);
-      case 'duration': return Boolean(form.duration > 0 && form.numberOfYears > 0);
+      case 'duration': return Boolean(form.numberOfYears > 0);
       case 'curriculum': return curriculum.years.length > 0 && curriculum.years.some(y => y.semesters.some(s => s.courses.length > 0) || (y.recessTerms || []).some(r => r.courses.length > 0));
       case 'fees': return fees.year_fees.length > 0 && fees.year_fees.some(yf => yf.semesters.some(s => s.total > 0));
       case 'admission': return Boolean(admissionReq.min_qualification);
@@ -626,13 +626,11 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             {section === 'duration' && (
               <>
                 <div className="grid grid-cols-3 gap-4">
-                  <Field label="Duration" value={form.duration} onChange={v => set('duration', parseInt(v) || 0)} type="number" />
                   <SelectField label="Duration Unit" value={form.durationUnit} onChange={v => set('durationUnit', v)} options={DURATION_UNITS} />
                   <Field label="Number of Years" value={form.numberOfYears} onChange={v => set('numberOfYears', parseInt(v) || 1)} type="number" />
+                  <Field label="Semesters Per Year" value={form.semestersPerYear} onChange={v => set('semestersPerYear', parseInt(v) || 2)} type="number" />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                  <Field label="Number of Semesters" value={form.numberOfSemesters} onChange={v => set('numberOfSemesters', parseInt(v) || 2)} type="number" />
-                  <Field label="Semesters Per Year" value={form.semestersPerYear} onChange={v => set('semestersPerYear', parseInt(v) || 2)} type="number" />
                   <div>
                     <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Total Credit Units</label>
                     <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/.3)] px-4 py-2 text-sm font-bold">{totalCredits}</div>
@@ -948,8 +946,9 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                 <SummaryRow label="Coordinator" value={form.programCoordinator || '—'} />
                 <SummaryRow label="Campus" value={form.campus || '—'} />
                 <hr className="border-[hsl(var(--border))]" />
-                <SummaryRow label="Duration" value={form.duration ? `${form.duration} ${form.durationUnit}` : '—'} />
-                <SummaryRow label="Years / Semesters" value={`${form.numberOfYears} / ${form.numberOfSemesters}`} />
+                <SummaryRow label="Duration" value={form.numberOfYears ? `${form.numberOfYears} ${form.durationUnit}` : '—'} />
+                <SummaryRow label="Years" value={String(form.numberOfYears)} />
+                <SummaryRow label="Semesters Per Year" value={String(form.semestersPerYear)} />
                 <SummaryRow label="Study Mode" value={form.studyMode || '—'} />
                 <SummaryRow label="Total Credits" value={String(totalCredits)} />
                 <hr className="border-[hsl(var(--border))]" />
