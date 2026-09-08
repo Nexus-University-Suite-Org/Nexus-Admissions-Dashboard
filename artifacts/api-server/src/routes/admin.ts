@@ -13,7 +13,7 @@ import {
   ReviewAdminApplicationParams,
   ReviewAdminApplicationBody,
   ReviewAdminApplicationResponse,
-} from "../schemas";
+} from "../schemas.js";
 
 type ApplicationStatus =
   | "DRAFT"
