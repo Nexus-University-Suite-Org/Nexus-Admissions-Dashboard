@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import router from "./routes/index.js";
 import { logger } from "./lib/logger.js";
+import { SPA_ASSETS } from "./spa-assets.generated.js";
 
 const app: Express = express();
 
@@ -65,11 +66,23 @@ function resolvePublicDir(): string | null {
 const publicDir = resolvePublicDir();
 
 app.use((req, res, next) => {
-  if (!publicDir || req.method !== "GET" || req.path.startsWith("/api")) {
+  if (req.method !== "GET" || req.path.startsWith("/api")) {
     return next();
   }
 
   const relPath = req.path === "/" ? "/index.html" : req.path;
+  const inline = SPA_ASSETS[relPath];
+
+  if (inline != null) {
+    const ext = path.extname(relPath).toLowerCase();
+    res.type(MIME_TYPES[ext] ?? "application/octet-stream").send(inline);
+    return;
+  }
+
+  if (!publicDir) {
+    return next();
+  }
+
   const filePath = path.join(publicDir, relPath);
 
   if (!filePath.startsWith(publicDir + path.sep) && relPath !== "/index.html") {
@@ -95,7 +108,18 @@ app.get("/", (_req, res) => {
 });
 
 app.use((req, res, next) => {
-  if (!publicDir || req.method !== "GET" || req.path.startsWith("/api")) {
+  if (req.method !== "GET" || req.path.startsWith("/api")) {
+    return next();
+  }
+
+  const inline = SPA_ASSETS["/index.html"];
+
+  if (inline != null) {
+    res.type("text/html; charset=utf-8").send(inline);
+    return;
+  }
+
+  if (!publicDir) {
     return next();
   }
 
