@@ -13,7 +13,7 @@ import {
   ReviewAdminApplicationParams,
   ReviewAdminApplicationBody,
   ReviewAdminApplicationResponse,
-} from "@workspace/api-zod";
+} from "../schemas";
 
 type ApplicationStatus =
   | "DRAFT"

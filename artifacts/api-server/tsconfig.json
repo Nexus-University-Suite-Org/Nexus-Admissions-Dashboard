@@ -6,11 +6,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "types": ["node"],
-    "esModuleInterop": true,
-    "baseUrl": ".",
-    "paths": {
-      "@workspace/api-zod": ["./src/api-zod-types.ts"]
-    }
+    "esModuleInterop": true
   },
   "include": ["src"]
 }
