@@ -468,13 +468,40 @@ function StatCard({ label, value, note, icon: Icon, tone = 'primary', delay = ''
   return <div className={`nexus-card fade-up ${delay} relative overflow-hidden p-5`}><div className={`mb-6 flex size-9 items-center justify-center rounded-xl ${tone === 'gold' ? 'bg-[hsl(var(--accent)/.28)] text-[hsl(31_59%_28%)]' : tone === 'red' ? 'bg-[hsl(var(--destructive)/.1)] text-[hsl(var(--destructive))]' : tone === 'green' ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(var(--primary)/.1)] text-[hsl(var(--primary))]'}`}><Icon size={18} /></div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p><p data-testid={`stat-${label.toLowerCase().replaceAll(' ', '-')}`} className="mt-1 text-3xl font-semibold tracking-tight">{value}</p><p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">{note}</p><div className="absolute -bottom-9 -right-8 size-28 rounded-full border border-[hsl(var(--border)/.6)]" /></div>;
 }
 
+function useNow(intervalMs = 60000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
+
+function greetingFor(date: Date) {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 function DashboardPage() {
   const stats = useGetAdminDashboardStats();
   const recent = useGetAdminRecentApplications({ limit: 6 });
   const { data: activeScheme } = useGetActiveScheme();
   const [, setLocation] = useLocation();
+  const now = useNow();
   const intakeYear = activeScheme?.academicYear || '—';
   const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake` : 'No active intake';
+  const todayLabel = useMemo(
+    () =>
+      now.toLocaleDateString('en-GB', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+    [now],
+  );
 
   console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
   console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
@@ -488,7 +515,7 @@ function DashboardPage() {
   const trendEntries = Object.entries(trend);
   const maxTrend = Math.max(...trendEntries.map(([, value]) => value), 1);
   return <div className="space-y-8">
-    <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">Tuesday, 18 June 2025</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">Good morning, team.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Here is the shape of the admissions desk today.</p></div><Button data-testid="button-view-all-applications" onClick={() => setLocation('/admin/applications')} variant="outline" className="w-fit gap-2 rounded-xl">Review applications <ArrowRight size={15} /></Button></section>
+    <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">{todayLabel}</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">{greetingFor(now)}, team.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Here is the shape of the admissions desk today.</p></div><Button data-testid="button-view-all-applications" onClick={() => setLocation('/admin/applications')} variant="outline" className="w-fit gap-2 rounded-xl">Review applications <ArrowRight size={15} /></Button></section>
     <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatCard label="Total applications" value={data?.totalApplications ?? 0} note={`Across the ${intakeLabel}`} icon={UsersRound} delay="delay-1" />
       <StatCard label="Awaiting review" value={data?.pendingReview ?? 0} note="Needs an admissions decision" icon={Clock3} tone="gold" delay="delay-2" />
