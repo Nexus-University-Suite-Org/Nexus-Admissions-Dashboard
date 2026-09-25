@@ -66,6 +66,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
@@ -144,11 +145,11 @@ function statusLabel(status?: string) {
 function StatusPill({ status }: { status?: string }) {
   const normalized = status?.toUpperCase();
   const styles: Record<string, string> = {
-    SUBMITTED: 'bg-[hsl(42_86%_65%/0.25)] text-[hsl(31_59%_28%)] border-[hsl(42_61%_61%)]',
-    ADMITTED: 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)] border-[hsl(160_31%_67%)]',
-    REJECTED: 'bg-[hsl(5_52%_91%)] text-[hsl(5_52%_38%)] border-[hsl(5_45%_76%)]',
-    WAITLISTED: 'bg-[hsl(203_42%_90%)] text-[hsl(203_51%_30%)] border-[hsl(203_37%_72%)]',
-    DRAFT: 'bg-[hsl(40_19%_91%)] text-[hsl(190_13%_45%)] border-[hsl(40_17%_80%)]',
+    SUBMITTED: 'bg-[hsl(42_86%_65%/0.25)] text-[hsl(31_59%_28%)] border-[hsl(42_61%_61%)] dark:bg-[hsl(42_86%_65%/0.16)] dark:text-[hsl(42_90%_78%)] dark:border-[hsl(42_61%_45%)]',
+    ADMITTED: 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)] border-[hsl(160_31%_67%)] dark:bg-[hsl(160_40%_50%/0.2)] dark:text-[hsl(160_50%_75%)] dark:border-[hsl(160_40%_40%)]',
+    REJECTED: 'bg-[hsl(5_52%_91%)] text-[hsl(5_52%_38%)] border-[hsl(5_45%_76%)] dark:bg-[hsl(5_70%_55%/0.2)] dark:text-[hsl(5_85%_78%)] dark:border-[hsl(5_60%_45%)]',
+    WAITLISTED: 'bg-[hsl(203_42%_90%)] text-[hsl(203_51%_30%)] border-[hsl(203_37%_72%)] dark:bg-[hsl(203_60%_60%/0.2)] dark:text-[hsl(203_80%_80%)] dark:border-[hsl(203_50%_45%)]',
+    DRAFT: 'bg-[hsl(40_19%_91%)] text-[hsl(190_13%_45%)] border-[hsl(40_17%_80%)] dark:bg-[hsl(var(--muted))] dark:text-[hsl(var(--muted-foreground))] dark:border-[hsl(var(--border))]',
   };
   return (
     <span data-testid={`status-${normalized?.toLowerCase() || 'unknown'}`} className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${styles[normalized || ''] || styles.DRAFT}`}>
@@ -275,7 +276,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 flex h-[72px] items-center justify-between border-b border-[hsl(var(--border)/.8)] bg-[hsl(var(--background)/.92)] px-5 backdrop-blur-md md:px-10">
           <div className="flex items-center gap-3"><button data-testid="button-open-nav" aria-label="Open navigation" onClick={() => setMobileNav(true)} className="rounded-lg p-2 hover:bg-[hsl(var(--muted))] md:hidden"><Menu size={20} /></button><div className="hidden md:block nexus-kicker text-[hsl(var(--muted-foreground))]">NEXUS / REGISTRARIAL SERVICES</div><span className="md:hidden"><LogoMark compact /></span></div>
-          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">{intakeLabel}</span><div ref={bellDropdownRef} className="relative"><button data-testid="button-notifications" aria-label="Notifications" onClick={() => setShowBellDropdown(!showBellDropdown)} className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} />{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showBellDropdown && (<div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl z-50"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3"><span className="text-sm font-semibold text-[hsl(var(--card-foreground))]">Notifications</span>{unreadCount > 0 && (<button onClick={() => markAllAsRead()} className="text-xs text-[hsl(var(--primary))] hover:underline">Mark all read</button>)}</div><div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? (<div className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">No notifications yet</div>) : (notifications.map((n) => (<button key={n.id} onClick={() => { if (!n.read) markAsRead(n.id); }} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[hsl(var(--muted))] ${!n.read ? 'bg-[hsl(var(--muted)/.5)]' : ''}`}><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!n.read ? 'bg-[hsl(var(--primary))]' : 'bg-transparent'}`} /><div className="min-w-0 flex-1"><p className={`text-xs ${!n.read ? 'font-semibold text-[hsl(var(--card-foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>{n.title}</p><p className="mt-0.5 truncate text-[11px] text-[hsl(var(--muted-foreground))]">{n.message}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{timeAgo(n.createdAt)}</p></div></button>)))}</div>{notifications.length > 0 && (<div className="border-t border-[hsl(var(--border))] px-4 py-2 text-center"><span className="text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{isConnected ? 'Live' : 'Reconnecting...'}</span></div>)}</div>)}</div></div>
+          <div className="flex items-center gap-4"><span className="hidden text-xs text-[hsl(var(--muted-foreground))] sm:inline">{intakeLabel}</span><ThemeToggle /><div ref={bellDropdownRef} className="relative"><button data-testid="button-notifications" aria-label="Notifications" onClick={() => setShowBellDropdown(!showBellDropdown)} className="relative rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"><Bell size={18} />{unreadCount > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(var(--destructive))] px-1 text-[10px] font-bold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}</button>{showBellDropdown && (<div className="absolute right-0 top-full mt-2 w-80 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-xl z-50"><div className="flex items-center justify-between border-b border-[hsl(var(--border))] px-4 py-3"><span className="text-sm font-semibold text-[hsl(var(--card-foreground))]">Notifications</span>{unreadCount > 0 && (<button onClick={() => markAllAsRead()} className="text-xs text-[hsl(var(--primary))] hover:underline">Mark all read</button>)}</div><div className="max-h-80 overflow-y-auto">{notifications.length === 0 ? (<div className="px-4 py-8 text-center text-sm text-[hsl(var(--muted-foreground))]">No notifications yet</div>) : (notifications.map((n) => (<button key={n.id} onClick={() => { if (!n.read) markAsRead(n.id); }} className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-[hsl(var(--muted))] ${!n.read ? 'bg-[hsl(var(--muted)/.5)]' : ''}`}><div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${!n.read ? 'bg-[hsl(var(--primary))]' : 'bg-transparent'}`} /><div className="min-w-0 flex-1"><p className={`text-xs ${!n.read ? 'font-semibold text-[hsl(var(--card-foreground))]' : 'text-[hsl(var(--muted-foreground))]'}`}>{n.title}</p><p className="mt-0.5 truncate text-[11px] text-[hsl(var(--muted-foreground))]">{n.message}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{timeAgo(n.createdAt)}</p></div></button>)))}</div>{notifications.length > 0 && (<div className="border-t border-[hsl(var(--border))] px-4 py-2 text-center"><span className="text-[10px] text-[hsl(var(--muted-foreground))] opacity-60">{isConnected ? 'Live' : 'Reconnecting...'}</span></div>)}</div>)}</div></div>
         </header>
         <main className="mx-auto max-w-[1440px] px-5 py-7 md:px-10 md:py-10">{children}</main>
       </div>
@@ -626,7 +627,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
   return <div>
     <div className="flex items-center justify-between mb-1">
       <label className="text-xs font-medium text-[hsl(var(--muted-foreground))]">{label}</label>
-      {value && <span className="text-[10px] text-[hsl(160_43%_25%)] bg-[hsl(160_35%_85%)] px-2 py-0.5 rounded-full">Uploaded ✓</span>}
+      {value && <span className="text-[10px] text-[hsl(160_43%_25%)] bg-[hsl(160_35%_85%)] dark:text-[hsl(160_50%_75%)] dark:bg-[hsl(160_40%_50%/0.2)] px-2 py-0.5 rounded-full">Uploaded ✓</span>}
     </div>
     {hint && <p className="text-[10px] text-[hsl(var(--muted-foreground))] mb-2">{hint}</p>}
     {value && <img src={value} alt={label} className="w-full max-h-44 rounded-lg object-cover mb-2 border border-[hsl(var(--border))]" />}
@@ -3400,17 +3401,17 @@ function SiteSettingsPage() {
           className="fixed top-6 right-6 z-50 pointer-events-auto"
           style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}
         >
-          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] dark:border-[hsl(160_30%_30%)] dark:bg-[hsl(160_35%_14%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
               <Check size={16} strokeWidth={3} />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
-              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)] dark:text-[hsl(160_45%_80%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] dark:text-[hsl(160_25%_65%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
             </div>
             <button
               onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }}
-              className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors"
+              className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] dark:text-[hsl(160_25%_60%)] dark:hover:text-[hsl(160_40%_80%)] transition-colors"
             >
               <X size={14} />
             </button>
@@ -3853,15 +3854,15 @@ function AdminSettingsPage() {
 
       {saveToast && (
         <div className="fixed top-6 right-6 z-50 pointer-events-auto" style={{ animation: 'toastIn 0.35s cubic-bezier(0.16,1,0.3,1) forwards' }}>
-          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
+          <div className="flex items-start gap-3 rounded-2xl border border-[hsl(160_40%_80%)] bg-[hsl(160_40%_97%)] dark:border-[hsl(160_30%_30%)] dark:bg-[hsl(160_35%_14%)] p-4 pr-10 shadow-[0_8px_30px_rgba(0,0,0,0.12)] max-w-sm">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[hsl(160_43%_42%)] text-white">
               <Check size={16} strokeWidth={3} />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-[hsl(160_43%_20%)]">{saveToast.title}</p>
-              <p className="text-xs text-[hsl(160_30%_35%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
+              <p className="text-sm font-semibold text-[hsl(160_43%_20%)] dark:text-[hsl(160_45%_80%)]">{saveToast.title}</p>
+              <p className="text-xs text-[hsl(160_30%_35%)] dark:text-[hsl(160_25%_65%)] mt-0.5 leading-relaxed">{saveToast.description}</p>
             </div>
-            <button onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }} className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] transition-colors">
+            <button onClick={() => { if (saveToastTimer.current) clearTimeout(saveToastTimer.current); setSaveToast(null); }} className="absolute right-3 top-3 rounded-md p-0.5 text-[hsl(160_30%_45%)] hover:text-[hsl(160_40%_25%)] dark:text-[hsl(160_25%_60%)] dark:hover:text-[hsl(160_40%_80%)] transition-colors">
               <X size={14} />
             </button>
           </div>
