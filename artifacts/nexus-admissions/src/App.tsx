@@ -1131,8 +1131,10 @@ function SiteSettingsPage() {
       await updateMutation.mutateAsync({ settingKey: key, settingValue: value });
       const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
       showSaveToast('Saved', `${label} has been updated successfully.`);
-    } catch {
-      showSaveToast('Error', 'Something went wrong. Please try again.');
+    } catch (error) {
+      console.error('[SETTINGS] Save failed for', key, error);
+      const reason = error instanceof Error ? error.message : 'Unknown error';
+      showSaveToast('Error', `Could not save. ${reason}`);
     }
   };
 

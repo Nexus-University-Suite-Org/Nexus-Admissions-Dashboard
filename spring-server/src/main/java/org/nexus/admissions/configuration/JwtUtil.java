@@ -15,8 +15,12 @@ public class JwtUtil {
     private final SecretKey key;
     private final long expirationMs;
 
-    public JwtUtil(@Value("${nap.jwt.secret}") String secret,
+    public JwtUtil(@Value("${nap.jwt.secret:}") String secret,
                    @Value("${nap.jwt.expiration-hours:24}") long expirationHours) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "JWT_SECRET is not set. Refusing to start with an empty signing key.");
+        }
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expirationMs = expirationHours * 60 * 60 * 1000;
     }

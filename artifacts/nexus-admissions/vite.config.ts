@@ -55,7 +55,7 @@ export default defineConfig({
       strict: true,
     },
     proxy: {
-      '/api/v1/storage': 'http://localhost:8080',
+      '/api/v1/storage': 'http://localhost:8090',
     },
   },
   preview: {
