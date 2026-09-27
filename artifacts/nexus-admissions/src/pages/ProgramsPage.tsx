@@ -1,9 +1,16 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Link, useLocation } from 'wouter';
+import { Link } from 'wouter';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { QueryErrorState } from '@/components/query-error-state';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle } from 'lucide-react';
 
 const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
@@ -35,13 +42,44 @@ const STUDY_MODES = ['Full-Time', 'Part-Time', 'Evening', 'Weekend', 'Online', '
 const DURATION_UNITS = ['Years', 'Months'];
 const CALENDARS = ['Semester', 'Trimester', 'Quarter'];
 
+// A fee row is either a numbered semester or a named recess term, so
+// `semester` is absent for recess rows rather than being a bogus number.
+type FeeSemester = {
+  semester?: number;
+  tuition: number; registration: number; examination: number; functional: number;
+  ict: number; library: number; medical: number; accommodation: number; other: number;
+  total: number;
+  name?: string; termType?: string;
+};
+
+const EMPTY_FEE_SEMESTER: FeeSemester = {
+  tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0,
+  library: 0, medical: 0, accommodation: 0, other: 0, total: 0,
+};
+
+const isRecessFee = (s: Pick<FeeSemester, 'name' | 'termType'>) => s.termType === 'recess' || /^recess/i.test(s.name || '');
+
+const feeEntryLabel = (s: FeeSemester) => {
+  if (isRecessFee(s)) return s.name || 'Recess Term';
+  if (s.semester != null) return `Semester ${s.semester}`;
+  return s.name || 'Semester';
+};
+
+// Stable identity for a fee row, matching the keys produced when syncing.
+// Falls back to parsing legacy rows that predate `semester`/`termType`.
+const feeEntryKey = (year: number, s: Pick<FeeSemester, 'semester' | 'name' | 'termType'>, recessIdx: number) => {
+  if (isRecessFee(s)) return `${year}-recess-${recessIdx}`;
+  if (s.semester != null) return `${year}-sem-${s.semester}`;
+  const parsed = /semester\s*(\d+)/i.exec(s.name || '');
+  return `${year}-sem-${parsed ? parsed[1] : '0'}`;
+};
+
 function parseJson<T>(s: string | null | undefined, fallback: T): T {
   if (!s) return fallback;
   try { return JSON.parse(s) as T; } catch { return fallback; }
 }
 
 export default function ProgramsPage() {
-  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -50,7 +88,7 @@ export default function ProgramsPage() {
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: programs = [], isLoading } = useQuery({
+  const { data: programs = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-programs'],
     queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
   });
@@ -83,7 +121,7 @@ export default function ProgramsPage() {
   const openNew = () => { setEditingProgram(null); setShowForm(true); };
 
   if (showForm) {
-    return <ProgramForm program={editingProgram} categories={categories} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
+    return <ProgramForm program={editingProgram} categories={categories} existingCodes={programs.map(p => p.programCode).filter(Boolean)} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
   }
 
   const subjects = (raw: string) => {
@@ -121,6 +159,8 @@ export default function ProgramsPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin" size={24} /></div>
+      ) : isError ? (
+        <QueryErrorState resource="programmes" error={error} onRetry={() => refetch()} />
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <GraduationCap size={40} className="mx-auto mb-4 opacity-30" />
@@ -209,14 +249,21 @@ export default function ProgramsPage() {
   );
 }
 
-function ProgramForm({ program, categories, onClose }: { program: Program | null; categories: ProgramCategory[]; onClose: () => void }) {
+function ProgramForm({ program, categories, existingCodes, onClose }: { program: Program | null; categories: ProgramCategory[]; existingCodes: string[]; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [, setLocation] = useLocation();
   const [section, setSection] = useState<'identity' | 'about' | 'org' | 'duration' | 'curriculum' | 'fees' | 'admission' | 'intakes' | 'accreditation' | 'documents' | 'presentation' | 'summary'>('identity');
   const [toast, setToast] = useState<string | null>(null);
   const [collapsedYears, setCollapsedYears] = useState<Set<string>>(new Set());
   const [collapsedFeeYears, setCollapsedFeeYears] = useState<Set<string>>(new Set());
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [partialWarning, setPartialWarning] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  // Holds the raw text of a numeric field while it is being edited, so that
+  // "0" is typeable and clearing the box does not snap back to a default.
+  const [numericDraft, setNumericDraft] = useState<Record<string, string>>({});
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const showToast = (msg: string) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3000); };
 
@@ -240,9 +287,11 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     intakeYear: program?.intakeYear || '',
   });
 
-  const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
+  const [fees, setFees] = useState<{ currency: string; year_fees: { year: number; semesters: FeeSemester[] }[] }>(
+    () => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: FeeSemester[] }[] }),
+  );
   const [admissionReq, setAdmissionReq] = useState(() => parseJson(program?.admissionRequirements, { min_qualification: '', min_grade: '', required_subjects: '', min_points: '', direct_entry: '', diploma_entry: '', mature_age_entry: '', international: '', other: '' }));
-  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }[] }));
+  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups?: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups?: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }[] }));
   const [intakesList, setIntakesList] = useState(() => parseJson(program?.intakes, [] as { name: string; month: string; academic_year: string; app_open: string; app_close: string; admission_start: string; max_students: number; status: string }[]));
   const [accreditation, setAccreditation] = useState(() => parseJson(program?.accreditation, { status: '', body: '', number: '', date: '', expiry: '', document_url: '' }));
   const [documentsList, setDocumentsList] = useState(() => parseJson(program?.documents, [] as { type: string; name: string; url: string }[]));
@@ -254,30 +303,111 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const saveMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const body = { ...data, fees: JSON.stringify(data.fees), admissionRequirements: JSON.stringify(data.admissionRequirements), curriculum: JSON.stringify(data.curriculum), intakes: JSON.stringify(data.intakes), accreditation: JSON.stringify(data.accreditation), documents: JSON.stringify(data.documents) };
-      if (program?.id) return customFetch(`${NAP_API}/api/v1/admin/programs/${program.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-      return customFetch(`${NAP_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    },
-    onSuccess: async (saved: Program) => {
-      // Sync categories
-      if (program?.id) {
-        const currentCats = categories.filter(c => c.programs.some(p => p.id === program.id)).map(c => c.id);
-        for (const catId of currentCats) {
-          if (!selectedCategoryIds.includes(catId)) {
-            await customFetch(`${NAP_API}/api/v1/admin/programs/${program.id}/categories/${catId}`, { method: 'DELETE' });
-          }
+      const editingId = program?.id;
+      const saved: Program = editingId
+        ? await customFetch(`${NAP_API}/api/v1/admin/programs/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await customFetch(`${NAP_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+      // The programme is persisted at this point. Category sync is isolated so
+      // that a failure there is reported as a category problem, not a failed
+      // save - otherwise the admin retries and creates a duplicate.
+      const ops: Promise<unknown>[] = [];
+      if (editingId) {
+        const removals = categories
+          .filter(c => c.programs.some(p => p.id === editingId) && !selectedCategoryIds.includes(c.id))
+          .map(c => c.id);
+        for (const catId of removals) {
+          ops.push(customFetch(`${NAP_API}/api/v1/admin/programs/${editingId}/categories/${catId}`, { method: 'DELETE' }));
         }
       }
       for (const catId of selectedCategoryIds) {
-        await customFetch(`${NAP_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' });
+        ops.push(customFetch(`${NAP_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' }));
       }
+      const settled = await Promise.allSettled(ops);
+      return { saved, failures: settled.filter(r => r.status === 'rejected').length, total: settled.length };
+    },
+    onSuccess: ({ failures, total }) => {
       queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
       queryClient.invalidateQueries({ queryKey: ['admin-program-categories'] });
+      setDirty(false);
+      if (failures > 0) {
+        setSaveError(null);
+        setPartialWarning(`Programme saved, but ${failures} of ${total} category update${total - failures === 1 ? '' : 's'} failed. Reopen this programme to retry them — do not create a duplicate.`);
+        return;
+      }
       showToast(program ? 'Program updated successfully' : 'Program created successfully');
       setTimeout(() => onClose(), 800);
     },
+    onError: (err: unknown) => {
+      setPartialWarning(null);
+      const status = (err as { status?: number } | null)?.status;
+      const message = (err as { message?: string } | null)?.message || 'the request did not complete';
+      setSaveError(
+        status === 401 || status === 403
+          ? `Your admin session was rejected by the admissions backend (HTTP ${status}). Sign out, sign in again, then retry. Nothing was saved.`
+          : status
+            ? `The server rejected this programme (HTTP ${status}): ${message}. Nothing was saved.`
+            : `Could not reach the admissions backend: ${message}. Nothing was saved.`,
+      );
+    },
   });
 
-  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
+  const set = (key: string, value: unknown) => {
+    setForm(f => ({ ...f, [key]: value }));
+    setDirty(true);
+    setErrors(e => {
+      if (!e[key]) return e;
+      const { [key]: _cleared, ...rest } = e;
+      return rest;
+    });
+  };
+
+  // Numeric fields keep their raw keystrokes in a draft while being edited so
+  // that "0" is typeable and the box can be emptied. The draft is dropped on
+  // blur, at which point the canonical number is shown again.
+  const setNumeric = (key: string, raw: string, fallback = 0) => {
+    setNumericDraft(d => ({ ...d, [key]: raw }));
+    set(key, raw.trim() === '' ? fallback : (Number.isFinite(Number(raw)) ? Number(raw) : fallback));
+  };
+  const numericValue = (key: string, canonical: unknown) =>
+    key in numericDraft ? numericDraft[key] : (canonical == null ? '' : String(canonical));
+
+  const SECTION_ORDER = ['identity', 'about', 'org', 'duration', 'curriculum', 'fees', 'admission', 'intakes', 'accreditation', 'documents', 'presentation', 'summary'] as const;
+  const SECTION_OF: Record<string, string> = {
+    programName: 'identity', programCode: 'identity', programType: 'identity',
+    numberOfYears: 'duration', semestersPerYear: 'duration',
+    cutoffScore: 'admission', minimumUcePasses: 'admission', capacity: 'admission', intakeYear: 'admission',
+  };
+
+  const validate = (): Record<string, string> => {
+    const e: Record<string, string> = {};
+    if (!form.programName.trim()) e.programName = 'Program name is required.';
+    if (!form.programCode.trim()) e.programCode = 'Program code is required.';
+    else if (existingCodes.some(c => c.trim().toLowerCase() === form.programCode.trim().toLowerCase())) {
+      e.programCode = 'Another programme already uses this code.';
+    }
+    if (!form.programType) e.programType = 'Select a programme type.';
+
+    const range = (key: string, label: string, min: number, max: number) => {
+      const raw = (form as Record<string, unknown>)[key];
+      if (raw === '' || raw == null) { e[key] = `${label} is required.`; return; }
+      const n = Number(raw);
+      if (!Number.isFinite(n)) { e[key] = `${label} must be a number.`; return; }
+      if (n < min || n > max) e[key] = `${label} must be between ${min} and ${max}.`;
+    };
+
+    range('numberOfYears', 'Number of years', 1, 10);
+    range('semestersPerYear', 'Semesters per year', 1, 4);
+    range('capacity', 'Capacity', 0, 100000);
+    range('minimumUcePasses', 'Min UCE passes', 0, 8);
+    range('cutoffScore', 'Cutoff score', 0, 48);
+    if (form.intakeYear.trim() && !/^\d{4}$/.test(form.intakeYear.trim())) {
+      e.intakeYear = 'Use a 4-digit year, e.g. 2026.';
+    }
+    return e;
+  };
+
+  const requestClose = () => { if (dirty) setConfirmDiscard(true); else onClose(); };
 
   const addYear = () => {
     const newYear = { year: curriculum.years.length + 1, semesters: [] as typeof curriculum.years[0]['semesters'], recessTerms: [] as typeof curriculum.years[0]['recessTerms'] };
@@ -469,20 +599,28 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
 
   const syncFeesToCurriculum = () => {
     setFees(f => {
-      const existing = new Map<string, typeof f.year_fees[0]['semesters'][0]>();
-      for (const yf of f.year_fees) for (const s of yf.semesters) existing.set(`${yf.year}-${s.name || s.semester}`, s);
+      // Rows are indexed with the SAME scheme used to look them up below.
+      // These used to disagree (`${year}-${name}` on write, `${year}-sem-${n}`
+      // on read), so no row ever matched its previous value and every resync
+      // silently reset every fee to zero.
+      const existing = new Map<string, FeeSemester>();
+      for (const yf of f.year_fees) {
+        let recessIdx = 0;
+        for (const s of yf.semesters) {
+          const key = feeEntryKey(yf.year, s, recessIdx);
+          if (isRecessFee(s)) recessIdx++;
+          existing.set(key, s);
+        }
+      }
+
       const year_fees = curriculum.years.map(y => {
         const semEntries = y.semesters.map(sem => {
-          const key = `${y.year}-sem-${sem.semester}`;
-          const prev = existing.get(key) || { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0 };
-          const total = semesterFeeSum(prev);
-          return { ...prev, total, name: `Semester ${sem.semester}`, termType: 'semester' as const };
+          const prev = existing.get(feeEntryKey(y.year, { semester: sem.semester }, 0)) || EMPTY_FEE_SEMESTER;
+          return { ...prev, semester: sem.semester, total: semesterFeeSum(prev), name: `Semester ${sem.semester}`, termType: 'semester' };
         });
         const recessEntries = (y.recessTerms || []).map((rt, ri) => {
-          const key = `${y.year}-recess-${ri}`;
-          const prev = existing.get(key) || { tuition: 0, registration: 0, examination: 0, functional: 0, ict: 0, library: 0, medical: 0, accommodation: 0, other: 0, total: 0 };
-          const total = semesterFeeSum(prev);
-          return { ...prev, total, name: rt.name || `Recess Term ${ri + 1}`, termType: 'recess' as const };
+          const prev = existing.get(`${y.year}-recess-${ri}`) || EMPTY_FEE_SEMESTER;
+          return { ...prev, semester: undefined, total: semesterFeeSum(prev), name: rt.name || `Recess Term ${ri + 1}`, termType: 'recess' };
         });
         return { year: y.year, semesters: [...semEntries, ...recessEntries] };
       });
@@ -496,12 +634,17 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
 
   const totalProgramFees = fees.year_fees.reduce((sum, yf) => sum + yf.semesters.reduce((s2, sem) => s2 + (sem.total || 0), 0), 0);
 
+  const sectionHasErrors = (key: string) => Object.keys(errors).some(k => SECTION_OF[k] === key);
+
   const isSectionComplete = (key: string): boolean => {
+    // A section with a validation problem is never "complete", otherwise the
+    // checkmark and the progress bar contradict the errors on screen.
+    if (sectionHasErrors(key)) return false;
     switch (key) {
       case 'identity': return Boolean(form.programName && form.programCode && form.programType);
       case 'about': return Boolean(form.programDescription);
       case 'org': return Boolean(form.facultySchool || form.department);
-      case 'duration': return Boolean(form.numberOfYears > 0);
+      case 'duration': return Boolean(form.numberOfYears > 0 && form.semestersPerYear > 0 && form.studyMode);
       case 'curriculum': return curriculum.years.length > 0 && curriculum.years.some(y => y.semesters.some(s => s.courses.length > 0) || (y.recessTerms || []).some(r => r.courses.length > 0));
       case 'fees': return fees.year_fees.length > 0 && fees.year_fees.some(yf => yf.semesters.some(s => s.total > 0));
       case 'admission': return Boolean(admissionReq.min_qualification);
@@ -535,19 +678,61 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   };
 
   const handleSubmit = () => {
+    setSaveError(null);
+    setPartialWarning(null);
+    const found = validate();
+    setErrors(found);
+    const failed = Object.keys(found);
+    if (failed.length > 0) {
+      // Jump to the earliest section that owns a problem rather than leaving
+      // the admin on Review with no indication of what to fix.
+      let target: string | null = null;
+      for (const key of failed) {
+        const s = SECTION_OF[key];
+        if (s && (target === null || SECTION_ORDER.indexOf(s as never) < SECTION_ORDER.indexOf(target as never))) target = s;
+      }
+      if (target) setSection(target as typeof section);
+      return;
+    }
     saveMutation.mutate({ ...form, totalCreditUnits: totalCredits, fees, admissionRequirements: admissionReq, curriculum, intakes: intakesList, accreditation, documents: documentsList });
   };
 
   return (
     <div className="space-y-6 relative">
       {toast && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 shadow-lg animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-lg animate-in fade-in slide-in-from-top-4 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200">
           <Check size={16} /> {toast}
         </div>
       )}
 
+      {(saveError || partialWarning) && (
+        <div
+          role="alert"
+          className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${saveError ? 'border-red-500/40 bg-red-500/10' : 'border-amber-500/40 bg-amber-500/10'}`}
+        >
+          <AlertCircle
+            size={16}
+            className={`mt-0.5 shrink-0 ${saveError ? 'text-red-600 dark:text-red-400' : 'text-amber-600 dark:text-amber-400'}`}
+          />
+          <div className="min-w-0 flex-1">
+            <p className={`text-sm font-semibold ${saveError ? 'text-red-800 dark:text-red-300' : 'text-amber-900 dark:text-amber-200'}`}>
+              {saveError ? 'Programme not saved' : 'Saved with warnings'}
+            </p>
+            <p className="mt-0.5 text-xs text-[hsl(var(--muted-foreground))]">{saveError || partialWarning}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => { setSaveError(null); setPartialWarning(null); }}
+            className="shrink-0 rounded-lg p-1 hover:bg-[hsl(var(--muted))]"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onClose}><X size={16} /></Button>
+        <Button variant="ghost" size="sm" onClick={requestClose} aria-label="Close without saving"><X size={16} /></Button>
         <div>
           <h1 className="nexus-serif text-2xl font-bold">{program ? 'Edit Program' : 'New Program'}</h1>
           <div className="flex items-center gap-2 mt-1">
@@ -566,8 +751,9 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             const done = isSectionComplete(s.key);
             return (
                 <button key={s.key} onClick={() => setSection(s.key as typeof section)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-left ${active ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm' : done ? 'text-emerald-600 hover:bg-emerald-50' : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]'}`}>
-                <span className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${active ? 'bg-white/20 text-[hsl(var(--primary-foreground))]' : done ? 'bg-emerald-100 text-emerald-600' : 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]'}`}>
+                aria-current={active ? 'step' : undefined}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all cursor-pointer text-left ${active ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] shadow-sm' : done ? 'text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-500/10' : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]'}`}>
+                <span className={`size-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${active ? 'bg-white/20 text-[hsl(var(--primary-foreground))]' : done ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300' : 'bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]'}`}>
                   {done ? <Check size={10} /> : s.icon}
                 </span>
                 <span className="truncate">{s.label}</span>
@@ -579,7 +765,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap gap-1 border-b border-[hsl(var(--border))] pb-2 lg:hidden">
             {sections.map(s => (
-              <button key={s.key} onClick={() => setSection(s.key as typeof section)} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${section === s.key ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : isSectionComplete(s.key) ? 'text-emerald-600 bg-emerald-50' : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]'}`}>
+              <button key={s.key} onClick={() => setSection(s.key as typeof section)} aria-current={section === s.key ? 'step' : undefined} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium transition-colors cursor-pointer ${section === s.key ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]' : isSectionComplete(s.key) ? 'text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-500/10' : 'text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]'}`}>
                 {isSectionComplete(s.key) && <Check size={8} className="inline mr-0.5" />}{s.label}
               </button>
             ))}
@@ -598,10 +784,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
 
             {section === 'identity' && (
               <>
-                <Field label="Program Name" value={form.programName} onChange={v => set('programName', v)} required />
+                <Field label="Program Name" value={form.programName} onChange={v => set('programName', v)} required error={errors.programName} />
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Program Code" value={form.programCode} onChange={v => set('programCode', v)} placeholder="e.g. BSC-CS" required />
-                  <SelectField label="Program Type" value={form.programType} onChange={v => set('programType', v)} options={PROGRAM_TYPES} required />
+                  <Field label="Program Code" value={form.programCode} onChange={v => set('programCode', v)} placeholder="e.g. BSC-CS" required error={errors.programCode} />
+                  <SelectField label="Program Type" value={form.programType} onChange={v => set('programType', v)} options={PROGRAM_TYPES} required error={errors.programType} />
                 </div>
                 <Field label="Award / Qualification" value={form.awardQualification} onChange={v => set('awardQualification', v)} />
                 <SelectField label="Status" value={form.status} onChange={v => set('status', v)} options={STATUSES} />
@@ -627,8 +813,8 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
               <>
                 <div className="grid grid-cols-3 gap-4">
                   <SelectField label="Duration Unit" value={form.durationUnit} onChange={v => set('durationUnit', v)} options={DURATION_UNITS} />
-                  <Field label="Number of Years" value={form.numberOfYears} onChange={v => set('numberOfYears', parseInt(v) || 1)} type="number" />
-                  <Field label="Semesters Per Year" value={form.semestersPerYear} onChange={v => set('semestersPerYear', parseInt(v) || 2)} type="number" />
+                  <Field label="Number of Years" value={numericValue('numberOfYears', form.numberOfYears)} onChange={v => setNumeric('numberOfYears', v, 1)} onBlur={() => setNumericDraft(d => { const { numberOfYears: _d, ...rest } = d; return rest; })} type="number" error={errors.numberOfYears} />
+                  <Field label="Semesters Per Year" value={numericValue('semestersPerYear', form.semestersPerYear)} onChange={v => setNumeric('semestersPerYear', v, 2)} onBlur={() => setNumericDraft(d => { const { semestersPerYear: _d, ...rest } = d; return rest; })} type="number" error={errors.semestersPerYear} />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
                   <div>
@@ -675,9 +861,14 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                   <Input value={cr.code} onChange={e => updateCourse(yi, si, cri, 'code', e.target.value)} placeholder="Code" className="w-24 text-xs" />
                                   <Input value={cr.name} onChange={e => updateCourse(yi, si, cri, 'name', e.target.value)} placeholder="Course Name" className="flex-1 text-xs" />
                                   <Input value={cr.credits} onChange={e => updateCourse(yi, si, cri, 'credits', parseInt(e.target.value) || 0)} type="number" placeholder="Credits" className="w-20 text-xs" title="Credit units for this course" />
-                                  <select value={cr.type} onChange={e => updateCourse(yi, si, cri, 'type', e.target.value)} className="text-xs border border-[hsl(var(--border))] rounded-lg px-2 py-1 bg-transparent">
-                                    <option value="Core">Core</option><option value="Elective">Elective</option><option value="Audited">Audited</option>
-                                  </select>
+                                  <Select value={cr.type || undefined} onValueChange={v => updateCourse(yi, si, cri, 'type', v)}>
+                                    <SelectTrigger className="w-32 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Core" className="text-xs">Core</SelectItem>
+                                      <SelectItem value="Elective" className="text-xs">Elective</SelectItem>
+                                      <SelectItem value="Audited" className="text-xs">Audited</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <Button variant="ghost" size="sm" onClick={() => removeCourse(yi, si, cri)} className="text-red-500 p-1"><X size={12} /></Button>
                                 </div>
                               ))}
@@ -721,9 +912,14 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                   <Input value={cr.code} onChange={e => updateCourse(yi, 0, cri, 'code', e.target.value, ri)} placeholder="Code" className="w-24 text-xs" />
                                   <Input value={cr.name} onChange={e => updateCourse(yi, 0, cri, 'name', e.target.value, ri)} placeholder="Course Name" className="flex-1 text-xs" />
                                   <Input value={cr.credits} onChange={e => updateCourse(yi, 0, cri, 'credits', parseInt(e.target.value) || 0, ri)} type="number" placeholder="Credits" className="w-20 text-xs" title="Credit units for this course" />
-                                  <select value={cr.type} onChange={e => updateCourse(yi, 0, cri, 'type', e.target.value, ri)} className="text-xs border border-[hsl(var(--border))] rounded-lg px-2 py-1 bg-transparent">
-                                    <option value="Core">Core</option><option value="Elective">Elective</option><option value="Audited">Audited</option>
-                                  </select>
+                                  <Select value={cr.type || undefined} onValueChange={v => updateCourse(yi, 0, cri, 'type', v, ri)}>
+                                    <SelectTrigger className="w-32 text-xs"><SelectValue placeholder="Type" /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="Core" className="text-xs">Core</SelectItem>
+                                      <SelectItem value="Elective" className="text-xs">Elective</SelectItem>
+                                      <SelectItem value="Audited" className="text-xs">Audited</SelectItem>
+                                    </SelectContent>
+                                  </Select>
                                   <Button variant="ghost" size="sm" onClick={() => removeCourse(yi, 0, cri, ri)} className="text-red-500 p-1"><X size={12} /></Button>
                                 </div>
                               ))}
@@ -804,7 +1000,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                                 };
                                 return (
                                   <div key={si} className="ml-4 border border-[hsl(var(--border)/.5)] rounded-lg p-3 space-y-2">
-                                    <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Semester {sem.semester}</p>
+                                    <p className="text-xs font-medium text-[hsl(var(--muted-foreground))]">{feeEntryLabel(sem)}</p>
                                     <div className="grid grid-cols-3 gap-3">
                                       <Field label="Tuition" value={sem.tuition} onChange={v => update('tuition', parseFloat(v) || 0)} type="number" />
                                       <Field label="Registration" value={sem.registration} onChange={v => update('registration', parseFloat(v) || 0)} type="number" />
@@ -842,10 +1038,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             {section === 'admission' && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Field label="Cutoff Score (AGP)" value={form.cutoffScore} onChange={v => set('cutoffScore', parseFloat(v) || 0)} type="number" placeholder="e.g. 26" />
-                  <Field label="Min UCE Passes" value={form.minimumUcePasses} onChange={v => set('minimumUcePasses', parseInt(v) || 5)} type="number" />
-                  <Field label="Capacity" value={form.capacity} onChange={v => set('capacity', parseInt(v) || 100)} type="number" />
-                  <Field label="Intake Year" value={form.intakeYear} onChange={v => set('intakeYear', v)} placeholder="e.g. 2026" />
+                  <Field label="Cutoff Score (AGP)" value={numericValue('cutoffScore', form.cutoffScore)} onChange={v => setNumeric('cutoffScore', v, 0)} onBlur={() => setNumericDraft(d => { const { cutoffScore: _d, ...rest } = d; return rest; })} type="number" placeholder="e.g. 26" error={errors.cutoffScore} />
+                  <Field label="Min UCE Passes" value={numericValue('minimumUcePasses', form.minimumUcePasses)} onChange={v => setNumeric('minimumUcePasses', v, 5)} onBlur={() => setNumericDraft(d => { const { minimumUcePasses: _d, ...rest } = d; return rest; })} type="number" error={errors.minimumUcePasses} />
+                  <Field label="Capacity" value={numericValue('capacity', form.capacity)} onChange={v => setNumeric('capacity', v, 0)} onBlur={() => setNumericDraft(d => { const { capacity: _d, ...rest } = d; return rest; })} type="number" error={errors.capacity} />
+                  <Field label="Intake Year" value={form.intakeYear} onChange={v => set('intakeYear', v)} placeholder="e.g. 2026" error={errors.intakeYear} />
                 </div>
                 <Field label="Essential Subjects" value={form.essentialSubjects} onChange={v => set('essentialSubjects', v)} placeholder="Comma-separated, e.g. Mathematics, Physics, Chemistry" />
                 <Field label="Relevant Subjects" value={form.relevantSubjects} onChange={v => set('relevantSubjects', v)} placeholder="Comma-separated" />
@@ -877,7 +1073,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                       <Field label="App Opens" value={intake.app_open} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, app_open: v } : item))} type="date" />
                       <Field label="App Closes" value={intake.app_close} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, app_close: v } : item))} type="date" />
                       <Field label="Admission Start" value={intake.admission_start} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, admission_start: v } : item))} type="date" />
-                      <Field label="Max Students" value={intake.max_students} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, max_students: parseInt(v) || 0 } : item))} type="number" />
+                      <Field label="Max Students" value={intake.max_students} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, max_students: Number.isFinite(Number(v)) && v !== '' ? Number(v) : 0 } : item))} type="number" />
                     </div>
                     <SelectField label="Status" value={intake.status} onChange={v => setIntakesList(list => list.map((item, j) => j === i ? { ...item, status: v } : item))} options={['Open', 'Closed', 'Upcoming']} />
                   </div>
@@ -900,9 +1096,16 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
               <>
                 {documentsList.map((doc, i) => (
                   <div key={i} className="flex items-center gap-3">
-                    <select value={doc.type} onChange={e => setDocumentsList(list => list.map((d, j) => j === i ? { ...d, type: e.target.value } : d))} className="text-sm border border-[hsl(var(--border))] rounded-lg px-3 py-2 bg-transparent">
-                      <option value="Brochure">Brochure</option><option value="Curriculum">Curriculum</option><option value="Accreditation">Accreditation</option><option value="Admission Guidelines">Admission Guidelines</option><option value="Other">Other</option>
-                    </select>
+                    <Select value={doc.type || undefined} onValueChange={v => setDocumentsList(list => list.map((d, j) => j === i ? { ...d, type: v } : d))}>
+                      <SelectTrigger className="w-56 text-sm"><SelectValue placeholder="Document type" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Brochure" className="text-sm">Brochure</SelectItem>
+                        <SelectItem value="Curriculum" className="text-sm">Curriculum</SelectItem>
+                        <SelectItem value="Accreditation" className="text-sm">Accreditation</SelectItem>
+                        <SelectItem value="Admission Guidelines" className="text-sm">Admission Guidelines</SelectItem>
+                        <SelectItem value="Other" className="text-sm">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Input value={doc.name} onChange={e => setDocumentsList(list => list.map((d, j) => j === i ? { ...d, name: e.target.value } : d))} placeholder="Document name" className="flex-1" />
                     <Button variant="ghost" size="sm" onClick={() => setDocumentsList(list => list.filter((_, j) => j !== i))} className="text-red-500"><X size={14} /></Button>
                   </div>
@@ -917,10 +1120,10 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
                 <TextareaField label="Full Description" value={form.fullDescription} onChange={v => set('fullDescription', v)} />
                 <div className="grid grid-cols-2 gap-4">
                   <div className="flex items-center gap-3">
-                    <input type="checkbox" checked={form.featured} onChange={e => set('featured', e.target.checked)} className="rounded" />
-                    <label className="text-sm">Featured Program</label>
+                    <Switch id="featured" checked={form.featured} onCheckedChange={c => set('featured', c)} />
+                    <label htmlFor="featured" className="text-sm cursor-pointer">Featured Program</label>
                   </div>
-                  <Field label="Display Order" value={form.displayOrder} onChange={v => set('displayOrder', parseInt(v) || 0)} type="number" />
+                  <Field label="Display Order" value={numericValue('displayOrder', form.displayOrder)} onChange={v => setNumeric('displayOrder', v, 0)} onBlur={() => setNumericDraft(d => { const { displayOrder: _d, ...rest } = d; return rest; })} type="number" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-2 block">Categories</label>
@@ -935,6 +1138,36 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
             )}
             {section === 'summary' && (
               <div className="space-y-5">
+                {(() => {
+                  const outstanding = validate();
+                  const keys = Object.keys(outstanding);
+                  return keys.length > 0 ? (
+                    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
+                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                        {keys.length} field{keys.length === 1 ? '' : 's'} need attention before this can be saved
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {keys.map(k => (
+                          <li key={k}>
+                            <button
+                              type="button"
+                              onClick={() => setSection((SECTION_OF[k] || 'identity') as typeof section)}
+                              className="text-xs text-amber-800 underline underline-offset-2 hover:text-amber-950 dark:text-amber-300 dark:hover:text-amber-100"
+                            >
+                              {outstanding[k]}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                      <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+                        All required fields are valid
+                      </p>
+                    </div>
+                  );
+                })()}
                 <SummaryRow label="Program Name" value={form.programName || '—'} />
                 <SummaryRow label="Code" value={form.programCode || '—'} />
                 <SummaryRow label="Type" value={form.programType || '—'} />
@@ -968,7 +1201,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
               {!isFirst && <Button variant="outline" onClick={goBack}>Back</Button>}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button variant="outline" onClick={requestClose}>Cancel</Button>
               {!isLast ? (
                 <Button onClick={goNext}>Next</Button>
               ) : (
@@ -980,27 +1213,59 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
           </div>
         </div>
       </div>
+
+      <AlertDialog open={confirmDiscard} onOpenChange={setConfirmDiscard}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have edits that have not been saved. Closing now will lose everything you
+              have entered across all twelve sections.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setDirty(false); onClose(); }}>
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function Field({ label, value, onChange, type = 'text', placeholder = '', required = false }: { label: string; value: unknown; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean }) {
+function Field({ label, value, onChange, type = 'text', placeholder = '', required = false, error, onBlur }: { label: string; value: unknown; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean; error?: string; onBlur?: () => void }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && ' *'}</label>
-      <Input type={type} value={value == null ? '' : String(value)} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="text-sm" />
+      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && <span className="text-[hsl(var(--destructive))]"> *</span>}</label>
+      <Input
+        type={type}
+        value={value == null ? '' : String(value)}
+        onChange={e => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
+        className={`text-sm ${error ? 'border-[hsl(var(--destructive))]' : ''}`}
+      />
+      {error && <p role="alert" className="mt-1 text-[11px] font-medium text-[hsl(var(--destructive))]">{error}</p>}
     </div>
   );
 }
 
-function SelectField({ label, value, onChange, options, required = false }: { label: string; value: string; onChange: (v: string) => void; options: string[]; required?: boolean }) {
+function SelectField({ label, value, onChange, options, required = false, placeholder = 'Select...', error }: { label: string; value: string; onChange: (v: string) => void; options: string[]; required?: boolean; placeholder?: string; error?: string }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && ' *'}</label>
-      <select value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm">
-        <option value="">Select...</option>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}{required && <span className="text-[hsl(var(--destructive))]"> *</span>}</label>
+      <Select value={value || undefined} onValueChange={onChange}>
+        <SelectTrigger aria-invalid={error ? true : undefined} className={`text-sm ${value ? '' : 'text-[hsl(var(--muted-foreground))]'} ${error ? 'border-[hsl(var(--destructive))]' : ''}`}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(o => <SelectItem key={o} value={o} className="text-sm">{o}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {error && <p role="alert" className="mt-1 text-[11px] font-medium text-[hsl(var(--destructive))]">{error}</p>}
     </div>
   );
 }
@@ -1014,11 +1279,11 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TextareaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function TextareaField({ label, value, onChange, placeholder = '' }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div>
       <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}</label>
-      <textarea value={value || ''} onChange={e => onChange(e.target.value)} className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm min-h-[80px]" />
+      <textarea value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm min-h-[80px]" />
     </div>
   );
 }

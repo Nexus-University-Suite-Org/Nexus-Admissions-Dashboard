@@ -65,6 +65,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Toaster } from '@/components/ui/toaster';
@@ -74,7 +75,24 @@ import './index.css';
 
 const NAD_API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8083';
 const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Defaults were retrying every failure 3 times with 1s/2s/4s backoff,
+      // so any 4xx turned a hard error into a ~7s hang that then rendered an
+      // empty list — indistinguishable from "no data yet". Only transient
+      // failures are worth retrying: a 4xx will never succeed on its own.
+      retry: (failureCount, error) => {
+        const status = (error as { status?: number } | null)?.status;
+        if (status != null) return status >= 500 && failureCount < 2;
+        // Network/CORS failures surface without a status; give those one retry.
+        return failureCount < 1;
+      },
+      retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 4000),
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 setBaseUrl(NAD_API);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
 
@@ -548,7 +566,7 @@ function ApplicationsPage() {
   const clearFilters = () => { setSearch(''); setStatus('ALL'); setPage(0); };
   return <div className="space-y-7">
     <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">Application register</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">Applications.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Search, filter and move each student’s application forward.</p></div><div className="nexus-mono text-right text-[10px] uppercase tracking-[.1em] text-[hsl(var(--muted-foreground))]"><span className="text-xl font-bold text-[hsl(var(--foreground))]">{results.data?.totalElements ?? '—'}</span><br />total records</div></section>
-    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="relative flex-1 sm:flex-none"><Filter size={14} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><select data-testid="select-status-filter" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as GetAdminApplicationsParams['status']); setPage(0); }} className="h-11 w-full appearance-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-8 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] sm:w-44"><option value="ALL">All statuses</option><option value="SUBMITTED">Submitted</option><option value="ADMITTED">Admitted</option><option value="WAITLISTED">Waitlisted</option><option value="REJECTED">Rejected</option><option value="DRAFT">Draft</option></select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
+    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="flex-1 sm:flex-none"><Select value={status} onValueChange={(v) => { setStatus(v as GetAdminApplicationsParams['status']); setPage(0); }}><SelectTrigger data-testid="select-status-filter" aria-label="Filter by status" className="h-11 w-full sm:w-44"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="ALL">All statuses</SelectItem><SelectItem value="SUBMITTED">Submitted</SelectItem><SelectItem value="ADMITTED">Admitted</SelectItem><SelectItem value="WAITLISTED">Waitlisted</SelectItem><SelectItem value="REJECTED">Rejected</SelectItem><SelectItem value="DRAFT">Draft</SelectItem></SelectContent></Select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
     <section className="nexus-card overflow-hidden">{results.isLoading ? <div className="space-y-3 p-5">{[1, 2, 3, 4, 5].map((n) => <div className="h-[68px] animate-pulse rounded-lg bg-[hsl(var(--muted))]" key={n} />)}</div> : results.isError ? <div className="p-6"><ErrorState message="The application register is temporarily unavailable." retry={() => results.refetch()} /></div> : content.length ? <><div className="hidden overflow-x-auto md:block"><table className="w-full border-collapse text-left"><thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.4)] text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]"><th className="px-6 py-4 font-bold">Applicant</th><th className="px-4 py-4 font-bold">Programme</th><th className="px-4 py-4 font-bold">Submitted</th><th className="px-4 py-4 font-bold">Status</th><th className="px-6 py-4 text-right font-bold">Open</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{content.map((app) => <ApplicationRow app={app} key={app.id} onOpen={() => setLocation(`/admin/applications/${app.id}`)} />)}</tbody></table></div><div className="divide-y divide-[hsl(var(--border))] md:hidden">{content.map((app) => <button data-testid={`card-application-${app.id}`} key={app.id} onClick={() => setLocation(`/admin/applications/${app.id}`)} className="flex w-full items-center gap-3 p-4 text-left"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{app.firstName} {app.lastName}</p><p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">{app.prn} · {app.programChoice1}</p><div className="mt-2"><StatusPill status={app.status} /></div></div><ChevronRight size={17} /></button>)}</div><Pagination page={results.data?.page ?? page} totalPages={results.data?.totalPages ?? 0} size={size} total={results.data?.totalElements ?? 0} onPage={setPage} onSize={(next) => { setSize(next); setPage(0); }} /></> : <EmptyState title={hasFilters ? 'No matching applications' : 'No applications yet'} detail={hasFilters ? 'Try another search or remove the filters to widen the register.' : 'Submitted student applications will appear in this register.'} action={hasFilters ? <Button data-testid="button-empty-clear" onClick={clearFilters} variant="outline" className="mt-5">Clear filters</Button> : undefined} />}</section>
   </div>;
 }
@@ -574,7 +592,7 @@ function ApplicationRow({ app, onOpen }: { app: Application; onOpen: () => void 
 
 function Pagination({ page, totalPages, size, total, onPage, onSize }: { page: number; totalPages: number; size: number; total: number; onPage: (page: number) => void; onSize: (size: number) => void }) {
   if (!total) return null;
-  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <select data-testid="select-page-size" value={size} onChange={(e) => onSize(Number(e.target.value))} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-xs"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => onPage(page - 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => onPage(page + 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
+  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <Select value={String(size)} onValueChange={(v) => onSize(Number(v))}><SelectTrigger data-testid="select-page-size" className="h-8 w-20 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="10" className="text-xs">10</SelectItem><SelectItem value="20" className="text-xs">20</SelectItem><SelectItem value="50" className="text-xs">50</SelectItem></SelectContent></Select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => onPage(page - 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => onPage(page + 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
 }
 
 function DetailField({ label, value, mono = false }: { label: string; value?: string | number | boolean | null; mono?: boolean }) {
@@ -1271,10 +1289,13 @@ function SiteSettingsPage() {
                 <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-3 items-center">
                   <Input value={btn.label} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], label: e.target.value }; setCtaButtons(next); }} placeholder="Label" />
                   <Input value={btn.href} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], href: e.target.value }; setCtaButtons(next); }} placeholder="URL" />
-                  <select value={btn.style} onChange={(e) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: e.target.value }; setCtaButtons(next); }} className="border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
-                    <option value="accent">Accent</option>
-                    <option value="outline">Outline</option>
-                  </select>
+                  <Select value={btn.style} onValueChange={(v) => { const next = [...ctaButtons]; next[i] = { ...next[i], style: v }; setCtaButtons(next); }}>
+                    <SelectTrigger className="text-sm"><SelectValue placeholder="Style" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="accent">Accent</SelectItem>
+                      <SelectItem value="outline">Outline</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <button onClick={() => { const next = [...ctaButtons]; next[i] = { ...next[i], visible: !next[i].visible }; setCtaButtons(next); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${btn.visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {btn.visible ? 'Visible' : 'Hidden'}
                   </button>
@@ -3702,11 +3723,14 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
           <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category</label><input value={form.category} onChange={e => set('category', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. Training, Graduation" /></div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Span</label>
-            <select value={form.span} onChange={e => set('span', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent">
-              <option value="1">Normal</option>
-              <option value="2">Wide (2 cols)</option>
-              <option value="3">Tall (2 rows)</option>
-            </select>
+            <Select value={form.span} onValueChange={(v) => set('span', v)}>
+              <SelectTrigger className="text-sm"><SelectValue placeholder="Select span" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Normal</SelectItem>
+                <SelectItem value="2">Wide (2 cols)</SelectItem>
+                <SelectItem value="3">Tall (2 rows)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div><label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Alt Text</label><input value={form.alt} onChange={e => set('alt', e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Accessibility text" /></div>

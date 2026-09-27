@@ -4,6 +4,7 @@ import { Link } from 'wouter';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { QueryErrorState } from '@/components/query-error-state';
 import { Loader2, Plus, Pencil, Trash2, ArrowLeft, X, GripVertical } from 'lucide-react';
 
 const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
@@ -18,7 +19,7 @@ export default function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<ProgramCategory | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: categories = [], isLoading } = useQuery({
+  const { data: categories = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-program-categories'],
     queryFn: () => customFetch<ProgramCategory[]>(`${NAP_API}/api/v1/admin/program-categories`),
   });
@@ -52,6 +53,8 @@ export default function CategoriesPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin" size={24} /></div>
+      ) : isError ? (
+        <QueryErrorState resource="programme categories" error={error} onRetry={() => refetch()} />
       ) : categories.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <p className="text-sm text-[hsl(var(--muted-foreground))]">No categories yet. Create one to organize your programs.</p>

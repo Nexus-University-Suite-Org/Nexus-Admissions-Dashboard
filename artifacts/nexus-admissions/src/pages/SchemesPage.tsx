@@ -1,8 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { QueryErrorState } from "@/components/query-error-state";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Loader2,
   Plus,
@@ -18,6 +26,8 @@ import {
   CalendarRange,
   Coins,
   Search,
+  AlertCircle,
+  Scale,
 } from "lucide-react";
 
 const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? "http://localhost:8080";
@@ -48,6 +58,10 @@ type AdmissionScheme = {
   createdAt: string;
   updatedBy: string | null;
   updatedAt: string;
+  oLevelWeight?: number | null;
+  aLevelWeight?: number | null;
+  bestOfOLevel?: number | null;
+  passGradeThreshold?: string | null;
 };
 
 type Program = {
@@ -71,7 +85,24 @@ function awardTypeForScheme(programType: string | undefined) {
   const normalized = (programType || "BACHELOR").trim().toUpperCase();
   return normalized === "UNDERGRADUATE" ? "BACHELOR" : normalized;
 }
-const ACADEMIC_YEARS = ["2025/2026", "2026/2027", "2027/2028", "2028/2029"];
+// Derived rather than hardcoded so the picker never goes stale. The current
+// Ugandan academic year runs February–January, so the year starting in 2026 is
+// "2026/2027" once January has passed. We always offer one year either side of
+// the current one so a scheme can be planned ahead or corrected afterwards.
+const CURRENT_ACADEMIC_YEAR = (() => {
+  const now = new Date();
+  const startYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  return `${startYear}/${startYear + 1}`;
+})();
+
+const ACADEMIC_YEARS = (() => {
+  const start = Number(CURRENT_ACADEMIC_YEAR.slice(0, 4));
+  return [-1, 0, 1, 2, 3].map((offset) => `${start + offset}/${start + offset + 1}`);
+})();
+
+const O_LEVEL_SUBJECTS = 8;
+const DEFAULT_O_WEIGHT = 40;
+const DEFAULT_A_WEIGHT = 60;
 const INTAKE_MONTHS = [
   "January",
   "February",
@@ -101,10 +132,17 @@ function formatUGX(n: number | null | undefined) {
   return "UGX " + Number(n).toLocaleString("en-US");
 }
 
+// Colours are expressed as low-alpha token blends rather than fixed light-mode
+// palette steps. A hardcoded `bg-emerald-100` stays a bright pastel in dark
+// mode, which is why these were unreadable on the dark theme.
 function statusColor(s: string) {
-  if (s === "OPEN") return "bg-emerald-100 text-emerald-700 border-emerald-200";
-  if (s === "SCHEDULED") return "bg-amber-100 text-amber-700 border-amber-200";
-  return "bg-gray-100 text-gray-600 border-gray-200";
+  if (s === "OPEN")
+    return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30";
+  if (s === "SCHEDULED")
+    return "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30";
+  if (s === "CLOSED")
+    return "bg-muted text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]";
+  return "bg-muted text-[hsl(var(--muted-foreground))] border-[hsl(var(--border))]";
 }
 
 function toLocalDT(iso: string | null | undefined) {
@@ -127,7 +165,7 @@ export default function SchemesPage() {
   const [editing, setEditing] = useState<AdmissionScheme | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: schemes = [], isLoading } = useQuery({
+  const { data: schemes = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ["admin-schemes"],
     queryFn: () =>
       customFetch<AdmissionScheme[]>(`${NAP_API}/api/v1/admin/schemes`),
@@ -200,6 +238,8 @@ export default function SchemesPage() {
         <div className="flex items-center justify-center py-20">
           <Loader2 className="animate-spin" size={24} />
         </div>
+      ) : isError ? (
+        <QueryErrorState resource="admission schemes" error={error} onRetry={() => refetch()} />
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <Megaphone size={40} className="mx-auto mb-4 opacity-30" />
@@ -424,13 +464,30 @@ function SchemeForm({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [toast, setToast] = useState<string | null>(null);
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+  const [toast, setToast] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (kind: "success" | "error", message: string) => {
+    setToast({ kind, message });
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    // Errors stay up longer: they usually need reading and acting on, whereas
+    // a success banner is just confirmation that the form closed correctly.
+    toastTimer.current = setTimeout(() => setToast(null), kind === "error" ? 8000 : 3000);
   };
 
-  const { data: programs = [] } = useQuery({
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  const {
+    data: programs = [],
+    isLoading: isLoadingPrograms,
+  } = useQuery({
     queryKey: ["admin-programs"],
     queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
   });
@@ -458,11 +515,105 @@ function SchemeForm({
         ? String(existingFees.nonEastAfrican)
         : "",
     status: scheme?.status || "OPEN",
+    oLevelWeight:
+      scheme?.oLevelWeight != null ? String(scheme.oLevelWeight) : String(DEFAULT_O_WEIGHT),
+    aLevelWeight:
+      scheme?.aLevelWeight != null ? String(scheme.aLevelWeight) : String(DEFAULT_A_WEIGHT),
+    bestOfOLevel:
+      scheme?.bestOfOLevel != null ? String(scheme.bestOfOLevel) : String(O_LEVEL_SUBJECTS),
+    passGradeThreshold: scheme?.passGradeThreshold || "C6",
   });
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
     (scheme?.programs || []).map((p) => p.id),
   );
   const [programSearch, setProgramSearch] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [showDiscardWarning, setShowDiscardWarning] = useState(false);
+
+  const initialSnapshot = useRef(
+    JSON.stringify({ form, selectedIds }),
+  );
+
+  const weightTotal =
+    (Number(form.oLevelWeight) || 0) + (Number(form.aLevelWeight) || 0);
+
+  const validate = () => {
+    const next: Record<string, string> = {};
+
+    if (!form.schemeName.trim()) next.schemeName = "Give the scheme a name.";
+    if (!form.category) next.category = "Choose the award type.";
+    if (!form.academicYear) next.academicYear = "Choose an academic year.";
+    if (!form.intakeMonth) next.intakeMonth = "Choose an intake month.";
+
+    if (form.appOpenDate && form.appCloseDate) {
+      if (new Date(form.appCloseDate) <= new Date(form.appOpenDate)) {
+        next.appCloseDate = "Closing must be after opening.";
+      }
+    }
+
+    const capacity = Number(form.capacity);
+    if (form.capacity && (!Number.isFinite(capacity) || capacity < 1)) {
+      next.capacity = "Capacity must be at least 1.";
+    }
+
+    for (const [key, label] of [
+      ["ugandan", "Ugandan"],
+      ["eastAfrican", "East African"],
+      ["nonEastAfrican", "Non East African"],
+      ["serviceFee", "Service fee"],
+    ] as const) {
+      const raw = form[key];
+      if (raw && (!Number.isFinite(Number(raw)) || Number(raw) < 0)) {
+        next[key] = `${label} cannot be negative.`;
+      }
+    }
+
+    const oWeight = Number(form.oLevelWeight);
+    const aWeight = Number(form.aLevelWeight);
+    if (
+      form.oLevelWeight.trim() === "" ||
+      !Number.isFinite(oWeight) ||
+      oWeight < 0 ||
+      oWeight > 100
+    ) {
+      next.oLevelWeight = "Enter a weight between 0 and 100.";
+    }
+    if (
+      form.aLevelWeight.trim() === "" ||
+      !Number.isFinite(aWeight) ||
+      aWeight < 0 ||
+      aWeight > 100
+    ) {
+      next.aLevelWeight = "Enter a weight between 0 and 100.";
+    }
+    if (!next.oLevelWeight && !next.aLevelWeight && Math.round(weightTotal) !== 100) {
+      next.oLevelWeight = `Weights must total 100% (currently ${Math.round(weightTotal)}%).`;
+    }
+
+    const bestOf = Number(form.bestOfOLevel);
+    if (
+      form.bestOfOLevel.trim() === "" ||
+      !Number.isInteger(bestOf) ||
+      bestOf < 1 ||
+      bestOf > O_LEVEL_SUBJECTS
+    ) {
+      next.bestOfOLevel = `Choose between 1 and ${O_LEVEL_SUBJECTS} O-level papers.`;
+    }
+
+    if (!form.passGradeThreshold.trim()) {
+      next.passGradeThreshold = "Set the minimum pass grade.";
+    }
+
+    if (selectedIds.length === 0) {
+      next.programIds = "Attach at least one programme.";
+    }
+
+    return next;
+  };
+
+  const isDirty =
+    JSON.stringify({ form, selectedIds }) !== initialSnapshot.current;
 
   const grouped = AWARD_ORDER.map((award) => ({
     award,
@@ -473,8 +624,18 @@ function SchemeForm({
     ),
   })).filter((g) => g.options.length > 0);
 
-  const set = (key: string, value: unknown) =>
+  const set = (key: string, value: unknown) => {
     setForm((f) => ({ ...f, [key]: value }));
+    // Clear a field's error as soon as the user edits it, so stale complaints
+    // don't sit there next to a field they've already corrected.
+    if (errors[key]) {
+      setErrors((e) => {
+        const next = { ...e };
+        delete next[key];
+        return next;
+      });
+    }
+  };
   const toggleProgram = (id: number) =>
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
@@ -498,20 +659,43 @@ function SchemeForm({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-schemes"] });
       showToast(
+        "success",
         scheme ? "Scheme updated successfully" : "Scheme created successfully",
       );
       setTimeout(onClose, 700);
     },
+    onError: (err: unknown) => {
+      // Previously this mutation had no onError at all, so a failed save just
+      // stopped the spinner and said nothing. Surface whatever the server said.
+      const message =
+        (err as { message?: string })?.message ||
+        "Could not save the scheme. Check your connection and try again.";
+      showToast("error", message);
+    },
   });
 
   const handleSubmit = () => {
+    setSubmitAttempted(true);
+    const found = validate();
+    setErrors(found);
+
+    if (Object.keys(found).length > 0) {
+      showToast(
+        "error",
+        `Fix ${Object.keys(found).length} highlighted ${
+          Object.keys(found).length === 1 ? "field" : "fields"
+        } before saving.`,
+      );
+      return;
+    }
+
     const applicationFees = JSON.stringify({
       ugandan: Number(form.ugandan) || 0,
       eastAfrican: Number(form.eastAfrican) || 0,
       nonEastAfrican: Number(form.nonEastAfrican) || 0,
     });
     saveMutation.mutate({
-      schemeName: form.schemeName,
+      schemeName: form.schemeName.trim(),
       category: form.category,
       academicYear: form.academicYear,
       intakeMonth: form.intakeMonth,
@@ -522,22 +706,56 @@ function SchemeForm({
       applicationFees,
       serviceFee: form.serviceFee ? Number(form.serviceFee) : 0,
       status: form.status,
+      oLevelWeight: Number(form.oLevelWeight),
+      aLevelWeight: Number(form.aLevelWeight),
+      bestOfOLevel: Number(form.bestOfOLevel),
+      passGradeThreshold: form.passGradeThreshold.trim(),
       programIds: selectedIds,
     });
   };
 
-  const required = Boolean(form.schemeName) && selectedIds.length > 0;
+  const requestClose = () => {
+    if (isDirty) {
+      setShowDiscardWarning(true);
+      return;
+    }
+    onClose();
+  };
+
+  const errorFor = (key: string) =>
+    submitAttempted ? errors[key] : undefined;
 
   return (
     <div className="space-y-6 relative">
       {toast && (
-        <div className="fixed top-6 right-6 z-50 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 shadow-lg animate-in fade-in slide-in-from-top-4">
-          <Check size={16} /> {toast}
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed top-6 right-6 z-50 flex items-start gap-2 max-w-sm rounded-xl border px-4 py-3 text-sm font-medium shadow-lg animate-in fade-in slide-in-from-top-4 ${
+            toast.kind === "success"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+              : "border-red-500/30 bg-red-500/10 text-red-800 dark:text-red-200"
+          }`}
+        >
+          {toast.kind === "success" ? (
+            <Check size={16} className="mt-0.5 shrink-0" />
+          ) : (
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          )}
+          <span>{toast.message}</span>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            aria-label="Dismiss notification"
+            className="ml-1 shrink-0 opacity-60 hover:opacity-100"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onClose}>
+        <Button variant="ghost" size="sm" onClick={requestClose} aria-label="Close">
           <X size={16} />
         </Button>
         <div>
@@ -551,13 +769,19 @@ function SchemeForm({
         </div>
       </div>
 
-      <div className="nexus-card rounded-2xl border p-6 space-y-4">
+      <section className="nexus-card rounded-2xl border p-6 space-y-4">
+        <SectionHeader
+          icon={<Megaphone size={14} />}
+          title="Basics"
+          description="How this scheme is named and which intake it belongs to."
+        />
         <Field
           label="Scheme Name"
           value={form.schemeName}
           onChange={(v) => set("schemeName", v)}
           placeholder="e.g. Undergraduate Admissions 2026/27"
           required
+          error={errorFor("schemeName")}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -566,18 +790,27 @@ function SchemeForm({
             value={form.category}
             onChange={(v) => set("category", v)}
             options={AWARD_ORDER}
+            placeholder="Select award"
+            required
+            error={errorFor("category")}
           />
           <SelectField
             label="Academic Year"
             value={form.academicYear}
             onChange={(v) => set("academicYear", v)}
             options={ACADEMIC_YEARS}
+            placeholder="Select year"
+            required
+            error={errorFor("academicYear")}
           />
           <SelectField
             label="Intake Month"
             value={form.intakeMonth}
             onChange={(v) => set("intakeMonth", v)}
             options={INTAKE_MONTHS}
+            placeholder="Select month"
+            required
+            error={errorFor("intakeMonth")}
           />
         </div>
 
@@ -591,31 +824,33 @@ function SchemeForm({
             className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm min-h-[70px]"
             placeholder="Short description shown on the public portal..."
           />
+          <p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">
+            Optional. Applicants see this on the public scheme list.
+          </p>
         </div>
 
+      </section>
+
+      <section className="nexus-card rounded-2xl border p-6 space-y-4">
+        <SectionHeader
+          icon={<CalendarRange size={14} />}
+          title="Schedule"
+          description="The window applicants can submit within, and how many places exist."
+        />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">
-              Application Opens
-            </label>
-            <input
-              type="datetime-local"
-              value={form.appOpenDate}
-              onChange={(e) => set("appOpenDate", e.target.value)}
-              className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">
-              Application Closes
-            </label>
-            <input
-              type="datetime-local"
-              value={form.appCloseDate}
-              onChange={(e) => set("appCloseDate", e.target.value)}
-              className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
-            />
-          </div>
+          <Field
+            label="Application Opens"
+            value={form.appOpenDate}
+            onChange={(v) => set("appOpenDate", v)}
+            type="datetime-local"
+          />
+          <Field
+            label="Application Closes"
+            value={form.appCloseDate}
+            onChange={(v) => set("appCloseDate", v)}
+            type="datetime-local"
+            error={errorFor("appCloseDate")}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -624,7 +859,9 @@ function SchemeForm({
             value={form.capacity}
             onChange={(v) => set("capacity", v.replace(/\D/g, ""))}
             type="number"
+            min={1}
             placeholder="e.g. 500"
+            error={errorFor("capacity")}
           />
           <SelectField
             label="Status"
@@ -637,7 +874,9 @@ function SchemeForm({
             value={form.serviceFee}
             onChange={(v) => set("serviceFee", v.replace(/\D/g, ""))}
             type="number"
+            min={0}
             placeholder="e.g. 5000"
+            error={errorFor("serviceFee")}
           />
         </div>
 
@@ -651,36 +890,116 @@ function SchemeForm({
               value={form.ugandan}
               onChange={(v) => set("ugandan", v.replace(/\D/g, ""))}
               type="number"
+              min={0}
               placeholder="e.g. 50000"
+              error={errorFor("ugandan")}
             />
             <Field
               label="East African"
               value={form.eastAfrican}
               onChange={(v) => set("eastAfrican", v.replace(/\D/g, ""))}
               type="number"
+              min={0}
               placeholder="e.g. 50000"
+              error={errorFor("eastAfrican")}
             />
             <Field
               label="Non East African"
               value={form.nonEastAfrican}
               onChange={(v) => set("nonEastAfrican", v.replace(/\D/g, ""))}
               type="number"
+              min={0}
               placeholder="e.g. 151500"
+              error={errorFor("nonEastAfrican")}
             />
           </div>
         </div>
+      </section>
 
-        <div>
-          <p className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-3 block">
-            Select Programme(s){" "}
-            <span className="text-[hsl(var(--primary))]">*</span>
-          </p>
+      <section className="nexus-card rounded-2xl border p-6 space-y-4">
+        <SectionHeader
+          icon={<Scale size={14} />}
+          title="Scoring Weighting"
+          description="How the new admissions engine splits applicant scores between O-level and A-level results. Applies from the next scoring cycle onward."
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="O-level Weight (%)"
+            value={form.oLevelWeight}
+            onChange={(v) => set("oLevelWeight", v.replace(/[^\d]/g, ""))}
+            type="number"
+            min={0}
+            max={100}
+            required
+            error={errorFor("oLevelWeight")}
+          />
+          <Field
+            label="A-level Weight (%)"
+            value={form.aLevelWeight}
+            onChange={(v) => set("aLevelWeight", v.replace(/[^\d]/g, ""))}
+            type="number"
+            min={0}
+            max={100}
+            required
+            error={errorFor("aLevelWeight")}
+          />
+        </div>
+
+        <p
+          className={`text-xs flex items-center gap-1.5 ${
+            Math.round(weightTotal) === 100
+              ? "text-emerald-700 dark:text-emerald-400"
+              : "text-red-700 dark:text-red-400"
+          }`}
+        >
+          {Math.round(weightTotal) === 100 ? (
+            <Check size={13} />
+          ) : (
+            <AlertCircle size={13} />
+          )}
+          Weights total {Math.round(weightTotal)}% (must equal 100%).
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SelectField
+            label="Best N O-level Papers"
+            value={form.bestOfOLevel}
+            onChange={(v) => set("bestOfOLevel", v)}
+            options={Array.from({ length: O_LEVEL_SUBJECTS }, (_, i) =>
+              String(i + 1),
+            )}
+            required
+            error={errorFor("bestOfOLevel")}
+          />
+          <Field
+            label="Minimum Pass Grade"
+            value={form.passGradeThreshold}
+            onChange={(v) => set("passGradeThreshold", v)}
+            placeholder="e.g. C6"
+            required
+            error={errorFor("passGradeThreshold")}
+          />
+        </div>
+      </section>
+
+      <section className="nexus-card rounded-2xl border p-6 space-y-4">
+        <SectionHeader
+          icon={<Users size={14} />}
+          title="Programmes"
+          description="Choose which programmes this scheme applies to. Grouped by award type."
+        />
           <p className="text-[10px] text-[hsl(var(--muted-foreground))] -mt-2 mb-3">
-            Grouped by award type.{" "}
+            Select Programme(s){" "}
+            <span className="text-[hsl(var(--primary))]">*</span>{" "}
             {selectedIds.length > 0
               ? `${selectedIds.length} selected.`
               : "Choose at least one programme."}
           </p>
+          {errorFor("programIds") && (
+            <p className="mb-3 flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400">
+              <AlertCircle size={13} /> {errorFor("programIds")}
+            </p>
+          )}
           <div className="relative mb-4">
             <Search
               size={15}
@@ -744,22 +1063,41 @@ function SchemeForm({
                 </div>
               </div>
             ))}
-            {grouped.length === 0 && (
+            {isLoadingPrograms && (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-[hsl(var(--muted-foreground))]">
+                <Loader2 size={16} className="animate-spin" />
+                Loading active programmes...
+              </div>
+            )}
+            {!isLoadingPrograms && grouped.length === 0 && (
               <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                No active programmes found to attach.
+                No active programmes found to attach. Create an active programme
+                first, then come back to this scheme.
+              </p>
+            )}
+            {!isLoadingPrograms && programs.length === 0 && (
+              <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                The programme list is empty. This usually means the request to
+                the admissions backend failed — check that the backend is running
+                and that you are signed in as an administrator.
               </p>
             )}
           </div>
-        </div>
-      </div>
+      </section>
 
-      <div className="flex justify-end gap-3">
-        <Button variant="outline" onClick={onClose}>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={requestClose}
+          disabled={saveMutation.isPending}
+        >
           Cancel
         </Button>
         <Button
+          type="button"
           onClick={handleSubmit}
-          disabled={!required || saveMutation.isPending}
+          disabled={saveMutation.isPending}
         >
           {saveMutation.isPending ? (
             <Loader2 className="animate-spin" size={14} />
@@ -767,6 +1105,59 @@ function SchemeForm({
           {scheme ? "Update Scheme" : "Create Scheme"}
         </Button>
       </div>
+
+      {showDiscardWarning && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="discard-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        >
+          <div className="nexus-card w-full max-w-sm rounded-2xl border p-6 space-y-4">
+            <h2 id="discard-title" className="nexus-serif text-lg font-bold">
+              Discard unsaved changes?
+            </h2>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              This scheme has edits that have not been saved. Leaving now discards
+              them.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowDiscardWarning(false)}
+              >
+                Keep editing
+              </Button>
+              <Button type="button" onClick={onClose}>
+                Discard
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({
+  icon,
+  title,
+  description,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="border-b border-[hsl(var(--border))] pb-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold">
+        <span className="text-[hsl(var(--primary))]">{icon}</span>
+        {title}
+      </h2>
+      <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
+        {description}
+      </p>
     </div>
   );
 }
@@ -778,6 +1169,9 @@ function Field({
   type = "text",
   placeholder = "",
   required = false,
+  error,
+  min,
+  max,
 }: {
   label: string;
   value: unknown;
@@ -785,20 +1179,40 @@ function Field({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  error?: string;
+  min?: number;
+  max?: number;
 }) {
+  const inputId = `field-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <div>
-      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">
+      <label
+        htmlFor={inputId}
+        className="mb-1 block text-xs font-medium text-[hsl(var(--muted-foreground))]"
+      >
         {label}
-        {required && " *"}
+        {required && <span className="text-[hsl(var(--primary))]"> *</span>}
       </label>
       <Input
+        id={inputId}
         type={type}
         value={value == null ? "" : String(value)}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="text-sm"
+        min={min}
+        max={max}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${inputId}-error` : undefined}
+        className={`text-sm ${error ? "border-red-500 focus-visible:ring-red-500" : ""}`}
       />
+      {error && (
+        <p
+          id={`${inputId}-error`}
+          className="mt-1 flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400"
+        >
+          <AlertCircle size={13} /> {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -808,32 +1222,61 @@ function SelectField({
   value,
   onChange,
   options,
+  placeholder = "Select...",
   required = false,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: string[];
+  placeholder?: string;
   required?: boolean;
+  error?: string;
 }) {
+  const inputId = `select-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
   return (
     <div>
-      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">
-        {label}
-        {required && " *"}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm"
+      <label
+        htmlFor={inputId}
+        className="mb-1 block text-xs font-medium text-[hsl(var(--muted-foreground))]"
       >
-        <option value="">Select...</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+        {label}
+        {required && <span className="text-[hsl(var(--primary))]"> *</span>}
+      </label>
+      <Select
+        value={value || undefined}
+        onValueChange={onChange}
+        disabled={false}
+      >
+        <SelectTrigger
+          id={inputId}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${inputId}-error` : undefined}
+          className={`text-sm ${
+            error
+              ? "border-red-500 focus-visible:ring-red-500"
+              : ""
+          } ${value ? "" : "text-[hsl(var(--muted-foreground))]"}`}
+        >
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o} value={o} className="text-sm">
+              {o}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && (
+        <p
+          id={`${inputId}-error`}
+          className="mt-1 flex items-center gap-1.5 text-xs text-red-700 dark:text-red-400"
+        >
+          <AlertCircle size={13} /> {error}
+        </p>
+      )}
     </div>
   );
 }
