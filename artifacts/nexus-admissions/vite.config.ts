@@ -73,7 +73,7 @@ export default defineConfig({
       strict: true,
     },
     proxy: {
-      '/api/v1/storage': 'http://localhost:8080',
+      '/api/v1/storage': process.env.VITE_NAP_API_BASE_URL || 'http://localhost:8080',
     },
   },
   preview: {

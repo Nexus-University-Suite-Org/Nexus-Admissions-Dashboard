@@ -69,13 +69,19 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import DebugBoundary from '@/components/DebugBoundary';
+import { API_BASE_URL, NAD_API_BASE_URL } from '@/lib/config';
+import { debugLog, debugWarn, installFetchTracer, logConfig, setDebug, traceApiError, traceRequest, debugEnabled } from '@/lib/debug';
 import './index.css';
 
-const NAD_API = 'http://localhost:8083';
-const NAP_API = 'http://localhost:8080';
+const NAD_API = NAD_API_BASE_URL;
+const NAP_API = API_BASE_URL;
 const queryClient = new QueryClient();
-setBaseUrl('http://localhost:8083');
+setBaseUrl(NAD_API_BASE_URL);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+// Trace every cross-origin fetch while debugging is enabled.
+installFetchTracer();
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return '';
@@ -287,16 +293,50 @@ function AuthGate({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
   const token = localStorage.getItem('nap_admin_token');
   const me = useGetAdminMe({ query: { enabled: Boolean(token), queryKey: getGetAdminMeQueryKey(), retry: false } });
-  console.log('[AUTH-GATE] token:', token ? token.substring(0, 20) + '...' : 'null', '| status:', me.status, '| fetchStatus:', me.fetchStatus, '| isError:', me.isError, '| data:', me.data);
-  if (me.isError) console.error('[AUTH-GATE] /auth/me error:', me.error);
+
+  // Token is never logged in full - only presence/length.
+  debugLog('[AUTH-GATE]', {
+    hasToken: Boolean(token),
+    tokenLength: token?.length ?? 0,
+    status: me.status,
+    fetchStatus: me.fetchStatus,
+    isError: me.isError,
+    user: me.data ? { email: me.data.email, role: (me.data as { role?: string }).role } : null,
+  });
+
+  if (me.isError) traceApiError('[AUTH-GATE] /auth/me', me.error);
+
   useEffect(() => {
-    if (!token) { console.log('[AUTH-GATE] No token — redirecting to login'); setLocation('/admin/login'); return; }
-    if (me.isError) { console.log('[AUTH-GATE] Auth failed — redirecting to login'); localStorage.removeItem('nap_admin_token'); setLocation('/admin/login'); }
+    debugLog('[AUTH-GATE] mounted', {
+      path: location.pathname,
+      hasToken: Boolean(token),
+      meStatus: me.status,
+    });
+    if (!token) {
+      debugWarn('[AUTH-GATE] no token in localStorage -> redirecting to /admin/login');
+      setLocation('/admin/login');
+      return;
+    }
+    if (me.isError) {
+      debugWarn('[AUTH-GATE] /auth/me rejected the token -> clearing and redirecting', {
+        tokenLength: token?.length ?? 0,
+      });
+      localStorage.removeItem('nap_admin_token');
+      setLocation('/admin/login');
+    }
   }, [me.isError, me.error, setLocation, token]);
-  if (!token || me.status === 'pending') return <PageLoader label="Checking secure access" />;
-  if (me.isError) return null;
-  if (!me.data) return <PageLoader label="Checking secure access" />;
-  return <Shell identity={me.data}>{children}</Shell>;
+
+  return (
+    <DebugBoundary>
+      {!token || me.status === 'pending' ? (
+        <PageLoader label="Checking secure access" />
+      ) : me.isError ? null : !me.data ? (
+        <PageLoader label="Checking secure access" />
+      ) : (
+        <Shell identity={me.data}>{children}</Shell>
+      )}
+    </DebugBoundary>
+  );
 }
 
 function PartnersManager() {
@@ -364,7 +404,7 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
@@ -435,11 +475,78 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [dbgOn, setDbgOn] = useState(() => debugEnabled());
+
+  useEffect(() => {
+    logConfig(NAP_API, NAD_API);
+    debugLog('LoginPage mounted at', location.pathname);
+
+    // Probe both Railway backends so we can see whether the browser can
+    // reach them at all, independent of the login attempt.
+    void (async () => {
+      if (!debugEnabled()) return;
+      debugLog('running connectivity probes...');
+      try {
+        await traceRequest('probe-NAP', `${NAP_API}/api/v1/admin/programs`, { method: 'GET' });
+      } catch { /* already logged */ }
+      try {
+        await traceRequest('probe-NAD', `${NAD_API}/api/v1/admin/partners`, { method: 'GET' });
+      } catch { /* already logged */ }
+      debugLog('probes finished');
+    })();
+
+    return () => debugLog('LoginPage unmounted');
+  }, []);
+
+  const toggleDebug = () => {
+    const next = !dbgOn;
+    setDebug(next);
+    setDbgOn(next);
+    if (next) {
+      debugLog('debug logging ENABLED - reloading to re-run startup probes');
+      setTimeout(() => location.reload(), 50);
+    }
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!email || !password) return;
-    console.log('[LOGIN] Submitting login for:', email);
-    login.mutate({ data: { email, password } }, { onSuccess: (session) => { console.log('[LOGIN] Success — token:', session.token?.substring(0, 20) + '...'); localStorage.setItem('nap_admin_token', session.token); setLocation('/admin'); }, onError: (err) => { console.error('[LOGIN] Failed:', err); } });
+    if (!email || ! password) {
+      debugWarn('[LOGIN] blocked submit - missing email or password', {
+        hasEmail: Boolean(email),
+        hasPassword: Boolean(password),
+      });
+      return;
+    }
+    debugLog('[LOGIN] submitting', {
+      email,
+      password: '<redacted>',
+      targetBaseUrl: NAD_API,
+      expectedRequestUrl: `${NAD_API}/api/v1/admin/auth/login`,
+    });
+    login.mutate(
+      { data: { email, password } },
+      {
+        onSuccess: (session) => {
+          debugLog('[LOGIN] success', {
+            tokenReceived: Boolean(session?.token),
+            tokenPreview: session?.token ? `${session.token.slice(0, 8)}...(${session.token.length} chars)` : null,
+          });
+          localStorage.setItem('nap_admin_token', session.token);
+          debugLog('[LOGIN] token stored, navigating to /admin');
+          setLocation('/admin');
+        },
+        onError: (err) => {
+          traceApiError('[LOGIN]', err);
+          debugWarn('[LOGIN] common causes:', [
+            'backend returns 401 -> wrong credentials',
+            'backend returns 403 -> CORS missing this origin, or role check',
+            'network error -> blocked by ad-blocker, offline, or CORS preflight',
+            'verify the NAD URL above is the admissions backend, not the NAP backend',
+          ]);
+        },
+      },
+    );
   };
   return (
     <div className="flex min-h-[100dvh] bg-[hsl(var(--background))]">
@@ -458,9 +565,19 @@ function LoginPage() {
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
          <div className="mt-5 rounded-xl border border-[hsl(var(--accent)/.35)] bg-[hsl(var(--accent)/.08)] px-4 py-3 text-[11px] leading-5 text-[hsl(var(--foreground)/.75)]"><p className="nexus-kicker mb-1 text-[hsl(var(--primary))]">Demo access</p><p>admin@nexus.edu <span className="mx-1 opacity-40">·</span> admin123</p></div>
-        <div className="mt-12 flex items-start gap-3 border-t border-[hsl(var(--border))] pt-5 text-[11px] leading-5 text-[hsl(var(--muted-foreground))]"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /><p>Access is monitored and protected. If you need assistance, contact the registrar's office.</p></div>
-      </div></div>
-    </div>
+         </div></div>
+        <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
+          <div className="flex items-center justify-between gap-3">
+            <span>Debug: <strong className="text-[hsl(var(--foreground))]">{dbgOn ? 'ON' : 'off'}</strong></span>
+            <button type="button" onClick={toggleDebug} data-testid="button-debug-toggle" className="rounded-md border border-[hsl(var(--border))] px-2 py-1 text-[10px] font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--muted)/.2)]">
+              {dbgOn ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+          <p className="mt-1">NAP: <span className="break-all">{NAP_API}</span></p>
+          <p>NAD: <span className="break-all">{NAD_API}</span></p>
+          {dbgOn && <p className="mt-1 text-[hsl(var(--primary))]">Open DevTools &rarr; Console for [NAD-DEBUG] output.</p>}
+        </div>
+     </div>
   );
 }
 
@@ -476,10 +593,27 @@ function DashboardPage() {
   const intakeYear = activeScheme?.academicYear || '—';
   const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake` : 'No active intake';
 
-  console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
-  console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
-  if (stats.error) console.error('[DASH] stats error:', stats.error);
-  if (recent.error) console.error('[DASH] recent error:', recent.error);
+  // Debug-gated: these describe state transitions, not every render.
+  const dashState = `${stats.status}/${recent.status}`;
+  const prevDashState = useRef(dashState);
+  useEffect(() => {
+    if (prevDashState.current === dashState) return;
+    prevDashState.current = dashState;
+    debugLog('[DASH] state change', {
+      stats: { status: stats.status, isError: stats.isError },
+      recent: { status: recent.status, isError: recent.isError, count: recent.data?.length ?? 0 },
+      activeScheme: activeScheme ? { academicYear: activeScheme.academicYear } : null,
+    });
+  }, [dashState, stats.status, stats.isError, recent.status, recent.isError, recent.data?.length, activeScheme]);
+
+  useEffect(() => {
+    if (stats.error) traceApiError('[DASH] stats', stats.error);
+    if (recent.error) traceApiError('[DASH] recent applications', recent.error);
+  }, [stats.error, recent.error]);
+
+  useEffect(() => {
+    debugLog('[DASH] mounted — stats:', `${NAD_API}/api/v1/admin/dashboard/stats`);
+  }, []);
 
   if (stats.isLoading) return <PageLoader label="Gathering admissions overview" />;
   if (stats.isError) return <ErrorState retry={() => stats.refetch()} />;
@@ -553,7 +687,7 @@ function DetailField({ label, value, mono = false }: { label: string; value?: st
   return <div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p><p data-testid={`detail-${label.toLowerCase().replaceAll(' ', '-')}`} className={`mt-1.5 text-sm ${mono ? 'nexus-mono text-xs' : ''}`}>{typeof value === 'boolean' ? (value ? 'Verified' : 'Not verified') : value || '—'}</p></div>;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 function DocumentField({ label, url }: { label: string; url?: string | null }) {
@@ -583,7 +717,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         const url = data.url || data.fileUrl || '';
@@ -1294,7 +1428,7 @@ function SiteSettingsPage() {
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
-                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
                       if (res.ok) {
                         const data = await res.json();
                         const url = data.url || data.fileUrl || '';
@@ -3431,7 +3565,7 @@ function StudentStoriesManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3562,7 +3696,7 @@ function PhotoGalleryManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
