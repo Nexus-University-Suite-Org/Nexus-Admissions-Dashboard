@@ -61,13 +61,8 @@ public class AdminFacade {
 
     @Transactional
     public AdminLoginResponse me(Long adminId) {
-        System.out.println("[ADMIN-FACADE] me() looking up adminId=" + adminId);
         Admin admin = adminService.findById(adminId)
-                .orElseThrow(() -> {
-                    System.out.println("[ADMIN-FACADE] Admin NOT FOUND for id=" + adminId);
-                    return new UnauthorizedException("Admin not found");
-                });
-        System.out.println("[ADMIN-FACADE] Admin found: email=" + admin.getEmail() + ", fullName=" + admin.getFullName());
+                .orElseThrow(() -> new UnauthorizedException("Admin not found"));
         return new AdminLoginResponse(null, admin.getEmail(), admin.getFullName());
     }
 

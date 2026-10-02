@@ -10,6 +10,8 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -57,6 +59,22 @@ public class GlobalExceptionHandler {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
         problem.setTitle("Bad request");
         problem.setProperty("error", ex.getMessage());
+        return problem;
+    }
+
+    /**
+     * A request that matches no handler is a client-side mistake, not a server
+     * fault. Spring raises these before any controller runs, so they used to
+     * reach the catch-all below and be reported as 500 - which sent us looking
+     * for a broken dependency when the real cause was simply a mistyped path.
+     */
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    public ProblemDetail handleMissing(Exception ex) {
+        log.info("No handler for request: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.NOT_FOUND, "No endpoint matches this request");
+        problem.setTitle("Not found");
+        problem.setProperty("error", "No endpoint matches this request");
         return problem;
     }
 

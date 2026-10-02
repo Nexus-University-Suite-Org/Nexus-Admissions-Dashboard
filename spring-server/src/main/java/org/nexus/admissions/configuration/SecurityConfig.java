@@ -1,9 +1,15 @@
 package org.nexus.admissions.configuration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -20,6 +26,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public SecurityConfig(JwtAuthFilter jwtAuthFilter) {
         this.jwtAuthFilter = jwtAuthFilter;
@@ -31,6 +38,13 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, exception) ->
+                                writeProblem(response, HttpStatus.UNAUTHORIZED,
+                                        "Unauthorized", "A valid bearer token is required"))
+                        .accessDeniedHandler((request, response, denied) ->
+                                writeProblem(response, HttpStatus.FORBIDDEN,
+                                        "Forbidden", "Access denied")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/admin/auth/login").permitAll()
                         .requestMatchers("/api/healthz").permitAll()
@@ -41,6 +55,32 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    /**
+     * Spring Security's default entry point answers an unauthenticated request
+     * with 403, which reads as "you may not act as this user" rather than "your
+     * credentials are missing or no longer valid". Clients cannot tell those
+     * apart, so an expired session looked like a permissions problem instead of
+     * a reason to send the user back to the login screen. Both entry point and
+     * access-denied handler write the same RFC 9457 problem shape the rest of
+     * the API uses.
+     */
+    private void writeProblem(HttpServletResponse response, HttpStatus status, String title, String detail)
+            throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.reset();
+        response.setStatus(status.value());
+        response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getOutputStream(), Map.of(
+                "type", "about:blank",
+                "title", title,
+                "status", status.value(),
+                "detail", detail,
+                "error", detail));
     }
 
     @Bean

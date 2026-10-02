@@ -548,7 +548,7 @@ function LoginPage() {
         onSuccess: (session) => {
           debugLog('[LOGIN] success', {
             tokenReceived: Boolean(session?.token),
-            tokenPreview: session?.token ? `${session.token.slice(0, 8)}...(${session.token.length} chars)` : null,
+            tokenLength: session?.token?.length ?? 0,
           });
           localStorage.setItem('nap_admin_token', session.token);
           debugLog('[LOGIN] token stored, navigating to /admin');
@@ -582,7 +582,6 @@ function LoginPage() {
           {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">We couldn't sign you in. Check your email and password, then try again.</div>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
-         <div className="mt-5 rounded-xl border border-[hsl(var(--accent)/.35)] bg-[hsl(var(--accent)/.08)] px-4 py-3 text-[11px] leading-5 text-[hsl(var(--foreground)/.75)]"><p className="nexus-kicker mb-1 text-[hsl(var(--primary))]">Demo access</p><p>admin@nexus.edu <span className="mx-1 opacity-40">·</span> admin123</p></div>
          </div></div>
         <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
           <div className="flex items-center justify-between gap-3">
@@ -3905,11 +3904,13 @@ function AdminSettingsPage() {
       // cached entry must be invalidated or the sidebar keeps the old email.
       // Seed the cache from the mutation result to update the sidebar
       // immediately, then refetch to confirm against the backend.
+      // /auth/profile returns no token (only a password change mints one), so
+      // keep whatever the previous entry held instead of clobbering it.
       qc.setQueryData(getGetAdminMeQueryKey(), (prev: any) => ({
         ...(prev ?? {}),
         fullName: result?.fullName ?? prev?.fullName,
         email: result?.email ?? prev?.email,
-        token: result?.token ?? null,
+        token: prev?.token ?? null,
       }));
       debugLog('[ADMIN-SET] sidebar identity updated from mutation result');
       await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
