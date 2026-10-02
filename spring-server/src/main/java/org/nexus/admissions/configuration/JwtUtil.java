@@ -42,6 +42,10 @@ public class JwtUtil {
                 .getPayload();
     }
 
+    public Date getIssuedAt(String token) {
+        return parseToken(token).getIssuedAt();
+    }
+
     public boolean isValid(String token) {
         try {
             Claims claims = parseToken(token);

@@ -28,6 +28,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class AdminFacade {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AdminFacade.class);
+
     private final AdminService adminService;
     private final NapBackendClient napClient;
     private final PasswordEncoder passwordEncoder;
@@ -84,16 +87,26 @@ public class AdminFacade {
     }
 
     @Transactional
-    public void changePassword(Long adminId, PasswordChangeRequest request) {
+public AdminLoginResponse changePassword(Long adminId, PasswordChangeRequest request) {
         Admin admin = adminService.findById(adminId)
-                .orElseThrow(() -> new RuntimeException("Admin not found"));
+                .orElseThrow(() -> new UnauthorizedException("Admin not found"));
 
         if (!passwordEncoder.matches(request.currentPassword(), admin.getPasswordHash())) {
-            throw new RuntimeException("Current password is incorrect.");
+            throw new UnauthorizedException("Current password is incorrect.");
         }
 
+        LocalDateTime changedAt = LocalDateTime.now();
         admin.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        adminService.update(admin);
+        admin.setPasswordChangedAt(changedAt);
+        Admin saved = adminService.update(admin);
+
+        // A fresh token is minted after the revocation instant so the browser
+        // that changed the password stays signed in, while every token issued
+        // beforehand fails the passwordChangedAt check in JwtAuthFilter.
+        String token = jwtUtil.generateToken(saved.getId(), saved.getEmail());
+        log.info("Password changed for admin id={}; tokens issued before {} are now rejected",
+                saved.getId(), changedAt);
+        return new AdminLoginResponse(token, saved.getEmail(), saved.getFullName());
     }
 
     @Transactional

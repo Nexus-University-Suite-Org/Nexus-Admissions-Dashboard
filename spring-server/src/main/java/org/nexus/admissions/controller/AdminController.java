@@ -59,12 +59,11 @@ public class AdminController {
     }
 
     @PutMapping("/auth/password")
-    public ResponseEntity<Map<String, String>> changePassword(
+    public ResponseEntity<AdminLoginResponse> changePassword(
             Authentication authentication,
             @Valid @RequestBody PasswordChangeRequest request) {
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        adminFacade.changePassword(principal.id(), request);
-        return ResponseEntity.ok(Map.of("status", "ok", "message", "Password changed successfully."));
+        return ResponseEntity.ok(adminFacade.changePassword(principal.id(), request));
     }
 
     @GetMapping("/dashboard/stats")

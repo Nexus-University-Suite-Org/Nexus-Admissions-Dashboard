@@ -3924,17 +3924,26 @@ function AdminSettingsPage() {
         currentPasswordProvided: data.currentPassword.length > 0,
         newPasswordLength: data.newPassword.length,
       });
-      return customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/password', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
       });
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      // Changing the password revokes every previously issued token, so the
+      // backend hands back a fresh one. Store it or this browser loses access too.
       debugLog('[ADMIN-SET] password change succeeded', {
-        status: result?.status ?? null,
-        message: result?.message ?? null,
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
       });
+      if (result?.token) {
+        localStorage.setItem('nap_admin_token', result.token);
+        debugLog('[ADMIN-SET] refreshed token stored after password change');
+        await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      } else {
+        debugWarn('[ADMIN-SET] no token returned - existing session may now be revoked');
+      }
     },
     onError: (err) => traceApiError('[ADMIN-SET] password change', err),
   });
@@ -4094,7 +4103,7 @@ function AdminSettingsPage() {
               setNewPassword('');
               setConfirmPassword('');
               debugLog('[ADMIN-SET] password change completed, fields cleared');
-              showSaveToast('Password Changed', 'Your password has been updated successfully.');
+              showSaveToast('Password Changed', 'Password updated. Other devices have been signed out.');
             } catch (err: any) {
               traceApiError('[ADMIN-SET] password change (submit button)', err);
               showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
