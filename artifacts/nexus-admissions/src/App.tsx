@@ -76,7 +76,25 @@ import './index.css';
 
 const NAD_API = NAD_API_BASE_URL;
 const NAP_API = API_BASE_URL;
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Do not retry 4xx. A 400/401/403/404 is deterministic: retrying it just
+      // fills the console with identical requests and hides the real failure.
+      // 5xx and network errors are still retried twice.
+      retry: (failureCount: number, error: unknown) => {
+        const status =
+          (error as { status?: number } | null)?.status ??
+          (error as { response?: { status?: number } } | null)?.response?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          debugWarn('[QUERY] not retrying 4xx', { status });
+          return false;
+        }
+        return failureCount < 2;
+      },
+    },
+  },
+});
 setBaseUrl(NAD_API_BASE_URL);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
 

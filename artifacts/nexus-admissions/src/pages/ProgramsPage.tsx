@@ -192,7 +192,8 @@ export default function ProgramsPage() {
         <div className="space-y-3">
           {filtered.map(p => (
             <div key={p.id} className="nexus-card rounded-2xl border overflow-hidden">
-              <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} className="w-full flex items-center gap-4 p-5 text-left hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+              <div className="w-full flex items-center gap-4 p-5 text-left">
+                <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-controls={`program-details-${p.id}`} className="flex items-center gap-4 flex-1 min-w-0 text-left rounded-lg hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
                 <GripVertical size={16} className="text-[hsl(var(--muted-foreground))] opacity-30 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -212,14 +213,17 @@ export default function ProgramsPage() {
                     {p.categoryNames?.length > 0 && <span className="text-accent">{p.categoryNames.join(', ')}</span>}
                   </div>
                 </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }}><Pencil size={14} /></Button>
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) { debugLog('[PROGRAMS] delete confirmed', { id: p.id, programCode: p.programCode }); deleteMutation.mutate(p.id); } else { debugLog('[PROGRAMS] delete cancelled', { id: p.id }); } }} className="text-red-500 hover:text-red-600"><Trash2 size={14} /></Button>
-                  {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }} aria-label={`Edit ${p.programName}`}><Pencil size={14} /></Button>
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) { debugLog('[PROGRAMS] delete confirmed', { id: p.id, programCode: p.programCode }); deleteMutation.mutate(p.id); } else { debugLog('[PROGRAMS] delete cancelled', { id: p.id }); } }} className="text-red-500 hover:text-red-600" aria-label={`Delete ${p.programName}`}><Trash2 size={14} /></Button>
+                  <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-label={expandedId === p.id ? `Collapse ${p.programName}` : `Expand ${p.programName}`} className="rounded-md p-1 hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+                    {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
                 </div>
-              </button>
+              </div>
               {expandedId === p.id && (
-                <div className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
+                <div id={`program-details-${p.id}`} className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
                   {p.shortDescription && <p className="text-sm text-[hsl(var(--muted-foreground))]">{p.shortDescription}</p>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div><span className="text-[hsl(var(--muted-foreground))]">Department:</span> <span className="font-medium">{p.department || '—'}</span></div>

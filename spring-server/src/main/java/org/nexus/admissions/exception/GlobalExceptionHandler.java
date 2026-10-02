@@ -33,6 +33,15 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Malformed JSON body");
     }
 
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ProblemDetail handleUpstream(UpstreamServiceException ex) {
+        log.warn("Upstream NAP-Backend call failed: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, ex.getMessage());
+        problem.setTitle("Upstream service unavailable");
+        problem.setProperty("error", ex.getMessage());
+        return problem;
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ProblemDetail handleRuntime(RuntimeException ex) {
         log.warn("Runtime exception: {}", ex.getMessage());
