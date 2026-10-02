@@ -69,13 +69,37 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import DebugBoundary from '@/components/DebugBoundary';
+import { API_BASE_URL, NAD_API_BASE_URL } from '@/lib/config';
+import { debugLog, debugWarn, installFetchTracer, logConfig, setDebug, traceApiError, traceRequest, debugEnabled } from '@/lib/debug';
 import './index.css';
 
-const NAD_API = 'http://localhost:8083';
-const NAP_API = 'http://localhost:8080';
-const queryClient = new QueryClient();
-setBaseUrl('http://localhost:8083');
+const NAD_API = NAD_API_BASE_URL;
+const NAP_API = API_BASE_URL;
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Do not retry 4xx. A 400/401/403/404 is deterministic: retrying it just
+      // fills the console with identical requests and hides the real failure.
+      // 5xx and network errors are still retried twice.
+      retry: (failureCount: number, error: unknown) => {
+        const status =
+          (error as { status?: number } | null)?.status ??
+          (error as { response?: { status?: number } } | null)?.response?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          debugWarn('[QUERY] not retrying 4xx', { status });
+          return false;
+        }
+        return failureCount < 2;
+      },
+    },
+  },
+});
+setBaseUrl(NAD_API_BASE_URL);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+// Trace every cross-origin fetch while debugging is enabled.
+installFetchTracer();
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return '';
@@ -287,16 +311,50 @@ function AuthGate({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
   const token = localStorage.getItem('nap_admin_token');
   const me = useGetAdminMe({ query: { enabled: Boolean(token), queryKey: getGetAdminMeQueryKey(), retry: false } });
-  console.log('[AUTH-GATE] token:', token ? token.substring(0, 20) + '...' : 'null', '| status:', me.status, '| fetchStatus:', me.fetchStatus, '| isError:', me.isError, '| data:', me.data);
-  if (me.isError) console.error('[AUTH-GATE] /auth/me error:', me.error);
+
+  // Token is never logged in full - only presence/length.
+  debugLog('[AUTH-GATE]', {
+    hasToken: Boolean(token),
+    tokenLength: token?.length ?? 0,
+    status: me.status,
+    fetchStatus: me.fetchStatus,
+    isError: me.isError,
+    user: me.data ? { email: me.data.email, role: (me.data as { role?: string }).role } : null,
+  });
+
+  if (me.isError) traceApiError('[AUTH-GATE] /auth/me', me.error);
+
   useEffect(() => {
-    if (!token) { console.log('[AUTH-GATE] No token — redirecting to login'); setLocation('/admin/login'); return; }
-    if (me.isError) { console.log('[AUTH-GATE] Auth failed — redirecting to login'); localStorage.removeItem('nap_admin_token'); setLocation('/admin/login'); }
+    debugLog('[AUTH-GATE] mounted', {
+      path: location.pathname,
+      hasToken: Boolean(token),
+      meStatus: me.status,
+    });
+    if (!token) {
+      debugWarn('[AUTH-GATE] no token in localStorage -> redirecting to /admin/login');
+      setLocation('/admin/login');
+      return;
+    }
+    if (me.isError) {
+      debugWarn('[AUTH-GATE] /auth/me rejected the token -> clearing and redirecting', {
+        tokenLength: token?.length ?? 0,
+      });
+      localStorage.removeItem('nap_admin_token');
+      setLocation('/admin/login');
+    }
   }, [me.isError, me.error, setLocation, token]);
-  if (!token || me.status === 'pending') return <PageLoader label="Checking secure access" />;
-  if (me.isError) return null;
-  if (!me.data) return <PageLoader label="Checking secure access" />;
-  return <Shell identity={me.data}>{children}</Shell>;
+
+  return (
+    <DebugBoundary>
+      {!token || me.status === 'pending' ? (
+        <PageLoader label="Checking secure access" />
+      ) : me.isError ? null : !me.data ? (
+        <PageLoader label="Checking secure access" />
+      ) : (
+        <Shell identity={me.data}>{children}</Shell>
+      )}
+    </DebugBoundary>
+  );
 }
 
 function PartnersManager() {
@@ -364,7 +422,7 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
@@ -435,11 +493,78 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [dbgOn, setDbgOn] = useState(() => debugEnabled());
+
+  useEffect(() => {
+    logConfig(NAP_API, NAD_API);
+    debugLog('LoginPage mounted at', location.pathname);
+
+    // Probe both Railway backends so we can see whether the browser can
+    // reach them at all, independent of the login attempt.
+    void (async () => {
+      if (!debugEnabled()) return;
+      debugLog('running connectivity probes...');
+      try {
+        await traceRequest('probe-NAP', `${NAP_API}/api/v1/admin/programs`, { method: 'GET' });
+      } catch { /* already logged */ }
+      try {
+        await traceRequest('probe-NAD', `${NAD_API}/api/v1/admin/partners`, { method: 'GET' });
+      } catch { /* already logged */ }
+      debugLog('probes finished');
+    })();
+
+    return () => debugLog('LoginPage unmounted');
+  }, []);
+
+  const toggleDebug = () => {
+    const next = !dbgOn;
+    setDebug(next);
+    setDbgOn(next);
+    if (next) {
+      debugLog('debug logging ENABLED - reloading to re-run startup probes');
+      setTimeout(() => location.reload(), 50);
+    }
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!email || !password) return;
-    console.log('[LOGIN] Submitting login for:', email);
-    login.mutate({ data: { email, password } }, { onSuccess: (session) => { console.log('[LOGIN] Success — token:', session.token?.substring(0, 20) + '...'); localStorage.setItem('nap_admin_token', session.token); setLocation('/admin'); }, onError: (err) => { console.error('[LOGIN] Failed:', err); } });
+    if (!email || ! password) {
+      debugWarn('[LOGIN] blocked submit - missing email or password', {
+        hasEmail: Boolean(email),
+        hasPassword: Boolean(password),
+      });
+      return;
+    }
+    debugLog('[LOGIN] submitting', {
+      email,
+      password: '<redacted>',
+      targetBaseUrl: NAD_API,
+      expectedRequestUrl: `${NAD_API}/api/v1/admin/auth/login`,
+    });
+    login.mutate(
+      { data: { email, password } },
+      {
+        onSuccess: (session) => {
+          debugLog('[LOGIN] success', {
+            tokenReceived: Boolean(session?.token),
+            tokenLength: session?.token?.length ?? 0,
+          });
+          localStorage.setItem('nap_admin_token', session.token);
+          debugLog('[LOGIN] token stored, navigating to /admin');
+          setLocation('/admin');
+        },
+        onError: (err) => {
+          traceApiError('[LOGIN]', err);
+          debugWarn('[LOGIN] common causes:', [
+            'backend returns 401 -> wrong credentials',
+            'backend returns 403 -> CORS missing this origin, or role check',
+            'network error -> blocked by ad-blocker, offline, or CORS preflight',
+            'verify the NAD URL above is the admissions backend, not the NAP backend',
+          ]);
+        },
+      },
+    );
   };
   return (
     <div className="flex min-h-[100dvh] bg-[hsl(var(--background))]">
@@ -457,10 +582,19 @@ function LoginPage() {
           {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">We couldn't sign you in. Check your email and password, then try again.</div>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
-         <div className="mt-5 rounded-xl border border-[hsl(var(--accent)/.35)] bg-[hsl(var(--accent)/.08)] px-4 py-3 text-[11px] leading-5 text-[hsl(var(--foreground)/.75)]"><p className="nexus-kicker mb-1 text-[hsl(var(--primary))]">Demo access</p><p>admin@nexus.edu <span className="mx-1 opacity-40">·</span> admin123</p></div>
-        <div className="mt-12 flex items-start gap-3 border-t border-[hsl(var(--border))] pt-5 text-[11px] leading-5 text-[hsl(var(--muted-foreground))]"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /><p>Access is monitored and protected. If you need assistance, contact the registrar's office.</p></div>
-      </div></div>
-    </div>
+         </div></div>
+        <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
+          <div className="flex items-center justify-between gap-3">
+            <span>Debug: <strong className="text-[hsl(var(--foreground))]">{dbgOn ? 'ON' : 'off'}</strong></span>
+            <button type="button" onClick={toggleDebug} data-testid="button-debug-toggle" className="rounded-md border border-[hsl(var(--border))] px-2 py-1 text-[10px] font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--muted)/.2)]">
+              {dbgOn ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+          <p className="mt-1">NAP: <span className="break-all">{NAP_API}</span></p>
+          <p>NAD: <span className="break-all">{NAD_API}</span></p>
+          {dbgOn && <p className="mt-1 text-[hsl(var(--primary))]">Open DevTools &rarr; Console for [NAD-DEBUG] output.</p>}
+        </div>
+     </div>
   );
 }
 
@@ -476,10 +610,27 @@ function DashboardPage() {
   const intakeYear = activeScheme?.academicYear || '—';
   const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake` : 'No active intake';
 
-  console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
-  console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
-  if (stats.error) console.error('[DASH] stats error:', stats.error);
-  if (recent.error) console.error('[DASH] recent error:', recent.error);
+  // Debug-gated: these describe state transitions, not every render.
+  const dashState = `${stats.status}/${recent.status}`;
+  const prevDashState = useRef(dashState);
+  useEffect(() => {
+    if (prevDashState.current === dashState) return;
+    prevDashState.current = dashState;
+    debugLog('[DASH] state change', {
+      stats: { status: stats.status, isError: stats.isError },
+      recent: { status: recent.status, isError: recent.isError, count: recent.data?.length ?? 0 },
+      activeScheme: activeScheme ? { academicYear: activeScheme.academicYear } : null,
+    });
+  }, [dashState, stats.status, stats.isError, recent.status, recent.isError, recent.data?.length, activeScheme]);
+
+  useEffect(() => {
+    if (stats.error) traceApiError('[DASH] stats', stats.error);
+    if (recent.error) traceApiError('[DASH] recent applications', recent.error);
+  }, [stats.error, recent.error]);
+
+  useEffect(() => {
+    debugLog('[DASH] mounted — stats:', `${NAD_API}/api/v1/admin/dashboard/stats`);
+  }, []);
 
   if (stats.isLoading) return <PageLoader label="Gathering admissions overview" />;
   if (stats.isError) return <ErrorState retry={() => stats.refetch()} />;
@@ -513,14 +664,43 @@ function ApplicationsPage() {
   const results = useGetAdminApplications(params);
   const content = results.data?.content || [];
 
-  console.log('[APPS] loading:', results.isLoading, 'error:', results.error, 'data:', results.data, 'content length:', content.length);
-  if (results.error) console.error('[APPS] fetch error:', results.error);
-  if (results.data) console.log('[APPS] totalElements:', results.data.totalElements, 'totalPages:', results.data.totalPages);
+  // Debug-gated, and only on real state changes (not every render).
+  const appsState = `${results.status}:${results.data?.totalElements ?? 'na'}:${params.search ?? ''}:${params.status}:${params.page}:${params.size}`;
+  const prevAppsState = useRef(appsState);
+  useEffect(() => {
+    if (prevAppsState.current === appsState) return;
+    const prev = prevAppsState.current;
+    prevAppsState.current = appsState;
+    debugLog('[APPS] state change', {
+      filters: { search: params.search || null, status: params.status, page: params.page, size: params.size },
+      previous: prev,
+      result: {
+        status: results.status,
+        isError: results.isError,
+        totalElements: results.data?.totalElements ?? null,
+        totalPages: results.data?.totalPages ?? null,
+        rowsOnPage: content.length,
+      },
+      url: `${NAD_API_BASE_URL}/api/v1/admin/applications`,
+    });
+  }, [appsState, params.search, params.status, params.page, params.size, results.status, results.isError, results.data?.totalElements, results.data?.totalPages, content.length]);
+
+  useEffect(() => {
+    if (results.error) traceApiError('[APPS] list applications', results.error);
+  }, [results.error]);
+
+  useEffect(() => {
+    debugLog('[APPS] mounted — listing from', `${NAD_API_BASE_URL}/api/v1/admin/applications`);
+    return () => debugLog('[APPS] unmounted');
+  }, []);
   const hasFilters = Boolean(search || status !== 'ALL');
-  const clearFilters = () => { setSearch(''); setStatus('ALL'); setPage(0); };
+  const clearFilters = () => {
+    debugLog('[APPS] clearing filters', { was: { search: search || null, status, page } });
+    setSearch(''); setStatus('ALL'); setPage(0);
+  };
   return <div className="space-y-7">
     <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">Application register</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">Applications.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Search, filter and move each student’s application forward.</p></div><div className="nexus-mono text-right text-[10px] uppercase tracking-[.1em] text-[hsl(var(--muted-foreground))]"><span className="text-xl font-bold text-[hsl(var(--foreground))]">{results.data?.totalElements ?? '—'}</span><br />total records</div></section>
-    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="relative flex-1 sm:flex-none"><Filter size={14} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><select data-testid="select-status-filter" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as GetAdminApplicationsParams['status']); setPage(0); }} className="h-11 w-full appearance-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-8 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] sm:w-44"><option value="ALL">All statuses</option><option value="SUBMITTED">Submitted</option><option value="ADMITTED">Admitted</option><option value="WAITLISTED">Waitlisted</option><option value="REJECTED">Rejected</option><option value="DRAFT">Draft</option></select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
+    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { debugLog('[APPS] search changed', { value: e.target.value, resetPageTo: 0 }); setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="relative flex-1 sm:flex-none"><Filter size={14} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><select data-testid="select-status-filter" aria-label="Filter by status" value={status} onChange={(e) => { const next = e.target.value as GetAdminApplicationsParams['status']; debugLog('[APPS] status filter changed', { from: status, to: next, resetPageTo: 0 }); setStatus(next); setPage(0); }} className="h-11 w-full appearance-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-8 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] sm:w-44"><option value="ALL">All statuses</option><option value="SUBMITTED">Submitted</option><option value="ADMITTED">Admitted</option><option value="WAITLISTED">Waitlisted</option><option value="REJECTED">Rejected</option><option value="DRAFT">Draft</option></select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
     <section className="nexus-card overflow-hidden">{results.isLoading ? <div className="space-y-3 p-5">{[1, 2, 3, 4, 5].map((n) => <div className="h-[68px] animate-pulse rounded-lg bg-[hsl(var(--muted))]" key={n} />)}</div> : results.isError ? <div className="p-6"><ErrorState message="The application register is temporarily unavailable." retry={() => results.refetch()} /></div> : content.length ? <><div className="hidden overflow-x-auto md:block"><table className="w-full border-collapse text-left"><thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.4)] text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]"><th className="px-6 py-4 font-bold">Applicant</th><th className="px-4 py-4 font-bold">Programme</th><th className="px-4 py-4 font-bold">Submitted</th><th className="px-4 py-4 font-bold">Status</th><th className="px-6 py-4 text-right font-bold">Open</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{content.map((app) => <ApplicationRow app={app} key={app.id} onOpen={() => setLocation(`/admin/applications/${app.id}`)} />)}</tbody></table></div><div className="divide-y divide-[hsl(var(--border))] md:hidden">{content.map((app) => <button data-testid={`card-application-${app.id}`} key={app.id} onClick={() => setLocation(`/admin/applications/${app.id}`)} className="flex w-full items-center gap-3 p-4 text-left"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{app.firstName} {app.lastName}</p><p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">{app.prn} · {app.programChoice1}</p><div className="mt-2"><StatusPill status={app.status} /></div></div><ChevronRight size={17} /></button>)}</div><Pagination page={results.data?.page ?? page} totalPages={results.data?.totalPages ?? 0} size={size} total={results.data?.totalElements ?? 0} onPage={setPage} onSize={(next) => { setSize(next); setPage(0); }} /></> : <EmptyState title={hasFilters ? 'No matching applications' : 'No applications yet'} detail={hasFilters ? 'Try another search or remove the filters to widen the register.' : 'Submitted student applications will appear in this register.'} action={hasFilters ? <Button data-testid="button-empty-clear" onClick={clearFilters} variant="outline" className="mt-5">Clear filters</Button> : undefined} />}</section>
   </div>;
 }
@@ -532,28 +712,40 @@ function ApplicationRow({ app, onOpen }: { app: Application; onOpen: () => void 
   const handleQuickReview = (status: 'admitted' | 'rejected', e: React.MouseEvent) => {
     e.stopPropagation();
     const label = status === 'admitted' ? 'admit' : 'reject';
-    if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) return;
+    debugLog('[APPS] quick review requested', { id: app.id, decision: status, applicant: `${app.firstName} ${app.lastName}`, currentStatus: app.status });
+    if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) {
+      debugLog('[APPS] quick review cancelled by user', { id: app.id, decision: status });
+      return;
+    }
     review.mutate({ id: app.id, data: { reviewStatus: status as ApplicationReviewInputReviewStatus, notes: '' } }, {
       onSuccess: () => {
+        debugLog('[APPS] quick review succeeded', { id: app.id, decision: status });
         queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) });
       },
+      onError: (err) => traceApiError(`[APPS] quick review ${status} (id ${app.id})`, err),
     });
   };
   return <tr data-testid={`row-application-${app.id}`} className="group transition-colors hover:bg-[hsl(var(--muted)/.4)]"><td className="px-6 py-4"><button data-testid={`button-open-application-${app.id}`} onClick={onOpen} className="flex items-center gap-3 text-left"><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div><p className="text-sm font-semibold group-hover:text-[hsl(var(--primary))]">{app.firstName} {app.lastName}</p><p className="nexus-mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{app.prn}</p></div></button></td><td className="max-w-[220px] truncate px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{app.programChoice1 || 'Not selected'}<br /><span className="text-[10px]">{app.studyMode || 'Study mode not set'}</span></td><td className="px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{formatDate(app.submittedAt || app.createdAt)}</td><td className="px-4 py-4"><StatusPill status={app.status} /></td><td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-1">{canReview && review.isPending !== true && <><button data-testid={`button-quick-admit-${app.id}`} onClick={(e) => handleQuickReview('admitted', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(160_43%_40%)] hover:bg-[hsl(160_43%_40%/.1)]"><CheckCircle2 size={13} /> Admit</button><button data-testid={`button-quick-reject-${app.id}`} onClick={(e) => handleQuickReview('rejected', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/.1)]"><XCircle size={13} /> Reject</button></>}<button data-testid={`button-view-application-${app.id}`} onClick={onOpen} className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--primary))]"><ExternalLink size={16} /></button></div></td></tr>;
 }
 
 function Pagination({ page, totalPages, size, total, onPage, onSize }: { page: number; totalPages: number; size: number; total: number; onPage: (page: number) => void; onSize: (size: number) => void }) {
-  if (!total) return null;
-  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <select data-testid="select-page-size" value={size} onChange={(e) => onSize(Number(e.target.value))} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-xs"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => onPage(page - 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => onPage(page + 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
+  useEffect(() => {
+    debugLog('[APPS] pagination render', { page, size, total, totalPages, visibleRows: total ? Math.min((page + 1) * size, total) - page * size : 0 });
+  }, [page, size, total, totalPages]);
+  if (!total) {
+    debugLog('[APPS] pagination hidden — total is 0');
+    return null;
+  }
+  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <select data-testid="select-page-size" value={size} onChange={(e) => { const next = Number(e.target.value); debugLog('[APPS] page size changed', { from: size, to: next }); onSize(next); }} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-xs"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => { debugLog('[APPS] page change', { from: page, to: page - 1 }); onPage(page - 1); }} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => { debugLog('[APPS] page change', { from: page, to: page + 1 }); onPage(page + 1); }} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
 }
 
 function DetailField({ label, value, mono = false }: { label: string; value?: string | number | boolean | null; mono?: boolean }) {
   return <div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p><p data-testid={`detail-${label.toLowerCase().replaceAll(' ', '-')}`} className={`mt-1.5 text-sm ${mono ? 'nexus-mono text-xs' : ''}`}>{typeof value === 'boolean' ? (value ? 'Verified' : 'Not verified') : value || '—'}</p></div>;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 function DocumentField({ label, url }: { label: string; url?: string | null }) {
@@ -583,7 +775,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         const url = data.url || data.fileUrl || '';
@@ -627,9 +819,9 @@ function ReviewPanel({ app }: { app: Application }) {
     const label = choice === 'admitted' ? 'admit' : choice === 'waitlisted' ? 'waitlist' : 'reject';
     if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) return;
     const data = { reviewStatus: ApplicationReviewInputReviewStatus[choice], notes };
-    console.log('[ReviewPanel] submitting review', { id: app.id, choice, data });
+    debugLog('[APPS] review submitted', { id: app.id, choice, applicant: `${app.firstName} ${app.lastName}`, noteLength: notes.length });
     setErrorMsg('');
-    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { console.log('[ReviewPanel] review success', resp); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { console.error('[ReviewPanel] review FAILED', err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
+    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { debugLog('[APPS] review accepted', { id: app.id, choice, newStatus: resp?.status ?? null }); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { traceApiError(`[APPS] review ${choice} rejected (id ${app.id})`, err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
   };
   if (app.status !== ApplicationStatus.SUBMITTED && app.status !== ApplicationStatus.DRAFT) return <div className="nexus-card border-l-4 border-l-[hsl(var(--primary))] p-5"><div className="flex gap-3"><FileCheck2 size={18} className="mt-0.5 text-[hsl(var(--primary))]" /><div><p className="text-sm font-semibold">This application has been reviewed</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">The decision is <strong className="capitalize text-[hsl(var(--foreground))]">{statusLabel(app.status)}</strong>. Review controls are available only for draft and submitted records.</p>{app.reviewerNotes && <blockquote className="mt-4 border-l-2 border-[hsl(var(--border))] pl-3 text-sm italic text-[hsl(var(--muted-foreground))]">“{app.reviewerNotes}”</blockquote>}</div></div></div>;
   return <div className="nexus-card overflow-hidden border-[hsl(var(--accent)/.6)]"><div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--accent)/.12)] px-5 py-4"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(31_59%_28%)]" /><p className="text-sm font-bold">Record a decision</p></div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Choose one outcome and leave a clear audit note.</p></div><div className="space-y-5 p-5"><div className="grid grid-cols-3 gap-2">{(['admitted', 'waitlisted', 'rejected'] as const).map((option) => <button data-testid={`button-review-${option}`} key={option} onClick={() => setChoice(option)} className={`rounded-xl border px-2 py-3 text-xs font-semibold capitalize transition-all ${choice === option ? option === 'rejected' ? 'border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/.08)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)]'}`}>{option}</button>)}</div><label className="block"><span className="mb-2 block text-xs font-semibold">Reviewer note <span className="font-normal text-[hsl(var(--muted-foreground))]">(recommended)</span></span><textarea data-testid="textarea-review-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Add context for the decision…" className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none transition-shadow focus:ring-1 focus:ring-[hsl(var(--ring))]" /></label>{notice && <div data-testid="status-review-success" className="flex items-center gap-2 rounded-lg bg-[hsl(160_35%_85%)] px-3 py-2 text-xs text-[hsl(160_43%_25%)]"><CheckCircle2 size={14} /> {notice}</div>}{errorMsg && <div data-testid="status-review-error" className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">Error: {errorMsg}</div>}{review.isError && !errorMsg && <div className="text-xs text-[hsl(var(--destructive))]">We couldn't save this decision. Please try again.</div>}<Button data-testid="button-submit-review" onClick={submitReview} disabled={review.isPending} className="h-11 w-full rounded-xl font-bold">{review.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving decision</> : <><Check size={15} /> Confirm decision</>}</Button></div></div>;
@@ -1294,7 +1486,7 @@ function SiteSettingsPage() {
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
-                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
                       if (res.ok) {
                         const data = await res.json();
                         const url = data.url || data.fileUrl || '';
@@ -3431,7 +3623,7 @@ function StudentStoriesManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3562,7 +3754,7 @@ function PhotoGalleryManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3690,22 +3882,71 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
 }
 
 function AdminSettingsPage() {
-  const { data: adminProfile } = useGetAdminMe({ query: { enabled: Boolean(localStorage.getItem('nap_admin_token')), retry: false, queryKey: getGetAdminMeQueryKey() } });
+  const hasToken = Boolean(localStorage.getItem('nap_admin_token'));
+  const qc = useQueryClient();
+  const { data: adminProfile, error: adminProfileError, isFetching: profileFetching } = useGetAdminMe({ query: { enabled: hasToken, retry: false, queryKey: getGetAdminMeQueryKey() } });
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { fullName: string; email: string }) =>
-      customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
+    mutationFn: (data: { fullName: string; email: string }) => {
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/profile', { fullName: data.fullName, email: data.email });
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: async (result) => {
+      debugLog('[ADMIN-SET] profile update succeeded', {
+        fullName: result?.fullName ?? null,
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
+      });
+      // AuthGate renders the sidebar identity from this same query key, so the
+      // cached entry must be invalidated or the sidebar keeps the old email.
+      // Seed the cache from the mutation result to update the sidebar
+      // immediately, then refetch to confirm against the backend.
+      // /auth/profile returns no token (only a password change mints one), so
+      // keep whatever the previous entry held instead of clobbering it.
+      qc.setQueryData(getGetAdminMeQueryKey(), (prev: any) => ({
+        ...(prev ?? {}),
+        fullName: result?.fullName ?? prev?.fullName,
+        email: result?.email ?? prev?.email,
+        token: prev?.token ?? null,
+      }));
+      debugLog('[ADMIN-SET] sidebar identity updated from mutation result');
+      await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      debugLog('[ADMIN-SET] invalidated /auth/me, refetching');
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] profile update', err),
   });
   const changePasswordMutation = useMutation({
-    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
-      customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+    mutationFn: (data: { currentPassword: string; newPassword: string }) => {
+      // Password values are deliberately never logged - only presence and length.
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/password', {
+        currentPasswordProvided: data.currentPassword.length > 0,
+        newPasswordLength: data.newPassword.length,
+      });
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/password', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: async (result) => {
+      // Changing the password revokes every previously issued token, so the
+      // backend hands back a fresh one. Store it or this browser loses access too.
+      debugLog('[ADMIN-SET] password change succeeded', {
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
+      });
+      if (result?.token) {
+        localStorage.setItem('nap_admin_token', result.token);
+        debugLog('[ADMIN-SET] refreshed token stored after password change');
+        await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      } else {
+        debugWarn('[ADMIN-SET] no token returned - existing session may now be revoked');
+      }
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] password change', err),
   });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -3717,13 +3958,43 @@ function AdminSettingsPage() {
   const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   const showSaveToast = (title: string, description: string) => {
+    debugLog('[ADMIN-SET] toast', { title, description });
     if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
     setSaveToast({ title, description });
     saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
   };
 
   useEffect(() => {
+    debugLog('[ADMIN-SET] page mounted', { hasToken, profileFetching });
+  }, [hasToken]);
+
+  useEffect(() => {
+    if (adminProfile) {
+      debugLog('[ADMIN-SET] profile loaded', {
+        fullName: adminProfile.fullName ?? null,
+        email: adminProfile.email ?? null,
+      });
+    }
+  }, [adminProfile]);
+
+  useEffect(() => {
+    if (adminProfileError) {
+      traceApiError('[ADMIN-SET] profile fetch', adminProfileError);
+    }
+  }, [adminProfileError]);
+
+  useEffect(() => {
+    if (!loaded) {
+      debugWarn('[ADMIN-SET] still waiting on profile before rendering', {
+        hasProfile: Boolean(adminProfile),
+        hasError: Boolean(adminProfileError),
+      });
+    }
+  }, [loaded, adminProfile, adminProfileError]);
+
+  useEffect(() => {
     if (adminProfile && !loaded) {
+      debugLog('[ADMIN-SET] hydrating form from profile');
       setFullName(adminProfile.fullName || '');
       setEmail(adminProfile.email || '');
       setLoaded(true);
@@ -3758,15 +4029,22 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!fullName.trim() || !email.trim()) {
+              debugWarn('[ADMIN-SET] save profile blocked: name and email are required', {
+                fullNameProvided: fullName.trim().length > 0,
+                emailProvided: email.trim().length > 0,
+              });
               showSaveToast('Error', 'Name and email are required.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting profile update');
               const result = await updateProfileMutation.mutateAsync({ fullName, email });
               if (result.email) setEmail(result.email);
               if (result.fullName) setFullName(result.fullName);
+              debugLog('[ADMIN-SET] profile update completed, form resynced');
               showSaveToast('Profile Updated', 'Your administrator profile has been saved.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] profile update (save button)', err);
               showSaveToast('Error', err?.message || 'Failed to update profile.');
             }
           }} disabled={updateProfileMutation.isPending}>
@@ -3796,24 +4074,39 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!currentPassword || !newPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: fields empty', {
+                currentPasswordProvided: currentPassword.length > 0,
+                newPasswordProvided: newPassword.length > 0,
+              });
               showSaveToast('Error', 'All password fields are required.');
               return;
             }
             if (newPassword.length < 6) {
+              debugWarn('[ADMIN-SET] change password blocked: new password too short', {
+                newPasswordLength: newPassword.length,
+                minimum: 6,
+              });
               showSaveToast('Error', 'New password must be at least 6 characters.');
               return;
             }
             if (newPassword !== confirmPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: confirmation mismatch', {
+                newPasswordLength: newPassword.length,
+                confirmPasswordLength: confirmPassword.length,
+              });
               showSaveToast('Error', 'New passwords do not match.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting password change');
               await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
-              showSaveToast('Password Changed', 'Your password has been updated successfully.');
+              debugLog('[ADMIN-SET] password change completed, fields cleared');
+              showSaveToast('Password Changed', 'Password updated. Other devices have been signed out.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] password change (submit button)', err);
               showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
             }
           }} disabled={changePasswordMutation.isPending}>

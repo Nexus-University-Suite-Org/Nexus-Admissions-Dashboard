@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -18,6 +19,7 @@ import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.model.Admin;
 import org.nexus.admissions.service.AdminService;
 import org.nexus.admissions.service.NapBackendClient;
@@ -26,6 +28,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class AdminFacade {
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AdminFacade.class);
 
     private final AdminService adminService;
     private final NapBackendClient napClient;
@@ -45,10 +50,10 @@ public class AdminFacade {
     @Transactional
     public AdminLoginResponse login(AdminLoginRequest request) {
         Admin admin = adminService.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("Invalid administrator credentials."));
+                .orElseThrow(() -> new UnauthorizedException("Invalid administrator credentials."));
 
         if (!passwordEncoder.matches(request.password(), admin.getPasswordHash())) {
-            throw new RuntimeException("Invalid administrator credentials.");
+            throw new UnauthorizedException("Invalid administrator credentials.");
         }
 
         String token = jwtUtil.generateToken(admin.getId(), admin.getEmail());
@@ -57,13 +62,8 @@ public class AdminFacade {
 
     @Transactional
     public AdminLoginResponse me(Long adminId) {
-        System.out.println("[ADMIN-FACADE] me() looking up adminId=" + adminId);
         Admin admin = adminService.findById(adminId)
-                .orElseThrow(() -> {
-                    System.out.println("[ADMIN-FACADE] Admin NOT FOUND for id=" + adminId);
-                    return new RuntimeException("Admin not found");
-                });
-        System.out.println("[ADMIN-FACADE] Admin found: email=" + admin.getEmail() + ", fullName=" + admin.getFullName());
+                .orElseThrow(() -> new UnauthorizedException("Admin not found"));
         return new AdminLoginResponse(null, admin.getEmail(), admin.getFullName());
     }
 
@@ -83,16 +83,30 @@ public class AdminFacade {
     }
 
     @Transactional
-    public void changePassword(Long adminId, PasswordChangeRequest request) {
+public AdminLoginResponse changePassword(Long adminId, PasswordChangeRequest request) {
         Admin admin = adminService.findById(adminId)
-                .orElseThrow(() -> new RuntimeException("Admin not found"));
+                .orElseThrow(() -> new UnauthorizedException("Admin not found"));
 
         if (!passwordEncoder.matches(request.currentPassword(), admin.getPasswordHash())) {
-            throw new RuntimeException("Current password is incorrect.");
+            throw new UnauthorizedException("Current password is incorrect.");
         }
 
+        // Truncate to whole seconds: JWT 'iat' is a NumericDate, so it carries no
+        // sub-second component. Keeping milliseconds here made the token minted
+        // on the next line look older than the change that authorised it, and
+        // the browser that performed the change was logged straight back out.
+        LocalDateTime changedAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         admin.setPasswordHash(passwordEncoder.encode(request.newPassword()));
-        adminService.update(admin);
+        admin.setPasswordChangedAt(changedAt);
+        Admin saved = adminService.update(admin);
+
+        // A fresh token is minted after the revocation instant so the browser
+        // that changed the password stays signed in, while every token issued
+        // beforehand fails the passwordChangedAt check in JwtAuthFilter.
+        String token = jwtUtil.generateToken(saved.getId(), saved.getEmail());
+        log.info("Password changed for admin id={}; tokens issued before {} are now rejected",
+                saved.getId(), changedAt);
+        return new AdminLoginResponse(token, saved.getEmail(), saved.getFullName());
     }
 
     @Transactional

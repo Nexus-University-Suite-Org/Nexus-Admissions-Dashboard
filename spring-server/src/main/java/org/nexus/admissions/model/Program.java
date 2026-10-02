@@ -125,6 +125,33 @@ public class Program {
     @Column(name = "intake_year", length = 10)
     private String intakeYear;
 
+    @Column(columnDefinition = "text")
+    private String documents;
+
+    @Column(name = "image_url", length = 500)
+    private String imageUrl;
+
+    @Column(name = "full_description", columnDefinition = "text")
+    private String fullDescription;
+
+    @Column
+    private Boolean featured;
+
+    @Column(name = "display_order")
+    private Integer displayOrder;
+
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @Column(name = "created_by", length = 200)
+    private String createdBy;
+
+    @Column(name = "updated_by", length = 200)
+    private String updatedBy;
+
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;
 }
