@@ -3883,22 +3883,46 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
 }
 
 function AdminSettingsPage() {
-  const { data: adminProfile } = useGetAdminMe({ query: { enabled: Boolean(localStorage.getItem('nap_admin_token')), retry: false, queryKey: getGetAdminMeQueryKey() } });
+  const hasToken = Boolean(localStorage.getItem('nap_admin_token'));
+  const { data: adminProfile, error: adminProfileError, isFetching: profileFetching } = useGetAdminMe({ query: { enabled: hasToken, retry: false, queryKey: getGetAdminMeQueryKey() } });
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { fullName: string; email: string }) =>
-      customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
+    mutationFn: (data: { fullName: string; email: string }) => {
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/profile', { fullName: data.fullName, email: data.email });
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: (result) => {
+      debugLog('[ADMIN-SET] profile update succeeded', {
+        fullName: result?.fullName ?? null,
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
+      });
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] profile update', err),
   });
   const changePasswordMutation = useMutation({
-    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
-      customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+    mutationFn: (data: { currentPassword: string; newPassword: string }) => {
+      // Password values are deliberately never logged - only presence and length.
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/password', {
+        currentPasswordProvided: data.currentPassword.length > 0,
+        newPasswordLength: data.newPassword.length,
+      });
+      return customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: (result) => {
+      debugLog('[ADMIN-SET] password change succeeded', {
+        status: result?.status ?? null,
+        message: result?.message ?? null,
+      });
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] password change', err),
   });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -3910,13 +3934,43 @@ function AdminSettingsPage() {
   const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   const showSaveToast = (title: string, description: string) => {
+    debugLog('[ADMIN-SET] toast', { title, description });
     if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
     setSaveToast({ title, description });
     saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
   };
 
   useEffect(() => {
+    debugLog('[ADMIN-SET] page mounted', { hasToken, profileFetching });
+  }, [hasToken]);
+
+  useEffect(() => {
+    if (adminProfile) {
+      debugLog('[ADMIN-SET] profile loaded', {
+        fullName: adminProfile.fullName ?? null,
+        email: adminProfile.email ?? null,
+      });
+    }
+  }, [adminProfile]);
+
+  useEffect(() => {
+    if (adminProfileError) {
+      traceApiError('[ADMIN-SET] profile fetch', adminProfileError);
+    }
+  }, [adminProfileError]);
+
+  useEffect(() => {
+    if (!loaded) {
+      debugWarn('[ADMIN-SET] still waiting on profile before rendering', {
+        hasProfile: Boolean(adminProfile),
+        hasError: Boolean(adminProfileError),
+      });
+    }
+  }, [loaded, adminProfile, adminProfileError]);
+
+  useEffect(() => {
     if (adminProfile && !loaded) {
+      debugLog('[ADMIN-SET] hydrating form from profile');
       setFullName(adminProfile.fullName || '');
       setEmail(adminProfile.email || '');
       setLoaded(true);
@@ -3951,15 +4005,22 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!fullName.trim() || !email.trim()) {
+              debugWarn('[ADMIN-SET] save profile blocked: name and email are required', {
+                fullNameProvided: fullName.trim().length > 0,
+                emailProvided: email.trim().length > 0,
+              });
               showSaveToast('Error', 'Name and email are required.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting profile update');
               const result = await updateProfileMutation.mutateAsync({ fullName, email });
               if (result.email) setEmail(result.email);
               if (result.fullName) setFullName(result.fullName);
+              debugLog('[ADMIN-SET] profile update completed, form resynced');
               showSaveToast('Profile Updated', 'Your administrator profile has been saved.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] profile update (save button)', err);
               showSaveToast('Error', err?.message || 'Failed to update profile.');
             }
           }} disabled={updateProfileMutation.isPending}>
@@ -3989,24 +4050,39 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!currentPassword || !newPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: fields empty', {
+                currentPasswordProvided: currentPassword.length > 0,
+                newPasswordProvided: newPassword.length > 0,
+              });
               showSaveToast('Error', 'All password fields are required.');
               return;
             }
             if (newPassword.length < 6) {
+              debugWarn('[ADMIN-SET] change password blocked: new password too short', {
+                newPasswordLength: newPassword.length,
+                minimum: 6,
+              });
               showSaveToast('Error', 'New password must be at least 6 characters.');
               return;
             }
             if (newPassword !== confirmPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: confirmation mismatch', {
+                newPasswordLength: newPassword.length,
+                confirmPasswordLength: confirmPassword.length,
+              });
               showSaveToast('Error', 'New passwords do not match.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting password change');
               await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
+              debugLog('[ADMIN-SET] password change completed, fields cleared');
               showSaveToast('Password Changed', 'Your password has been updated successfully.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] password change (submit button)', err);
               showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
             }
           }} disabled={changePasswordMutation.isPending}>

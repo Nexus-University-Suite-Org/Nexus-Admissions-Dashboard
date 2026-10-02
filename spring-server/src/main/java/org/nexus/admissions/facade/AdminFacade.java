@@ -18,6 +18,7 @@ import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.model.Admin;
 import org.nexus.admissions.service.AdminService;
 import org.nexus.admissions.service.NapBackendClient;
@@ -45,10 +46,10 @@ public class AdminFacade {
     @Transactional
     public AdminLoginResponse login(AdminLoginRequest request) {
         Admin admin = adminService.findByEmail(request.email())
-                .orElseThrow(() -> new RuntimeException("Invalid administrator credentials."));
+                .orElseThrow(() -> new UnauthorizedException("Invalid administrator credentials."));
 
         if (!passwordEncoder.matches(request.password(), admin.getPasswordHash())) {
-            throw new RuntimeException("Invalid administrator credentials.");
+            throw new UnauthorizedException("Invalid administrator credentials.");
         }
 
         String token = jwtUtil.generateToken(admin.getId(), admin.getEmail());
@@ -61,7 +62,7 @@ public class AdminFacade {
         Admin admin = adminService.findById(adminId)
                 .orElseThrow(() -> {
                     System.out.println("[ADMIN-FACADE] Admin NOT FOUND for id=" + adminId);
-                    return new RuntimeException("Admin not found");
+                    return new UnauthorizedException("Admin not found");
                 });
         System.out.println("[ADMIN-FACADE] Admin found: email=" + admin.getEmail() + ", fullName=" + admin.getFullName());
         return new AdminLoginResponse(null, admin.getEmail(), admin.getFullName());

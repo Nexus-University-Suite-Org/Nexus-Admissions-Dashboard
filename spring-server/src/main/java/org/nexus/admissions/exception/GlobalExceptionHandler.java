@@ -33,6 +33,15 @@ public class GlobalExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Malformed JSON body");
     }
 
+    @ExceptionHandler(UnauthorizedException.class)
+    public ProblemDetail handleUnauthorized(UnauthorizedException ex) {
+        log.info("Authentication failed: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        problem.setTitle("Unauthorized");
+        problem.setProperty("error", ex.getMessage());
+        return problem;
+    }
+
     @ExceptionHandler(UpstreamServiceException.class)
     public ProblemDetail handleUpstream(UpstreamServiceException ex) {
         log.warn("Upstream NAP-Backend call failed: {}", ex.getMessage());
