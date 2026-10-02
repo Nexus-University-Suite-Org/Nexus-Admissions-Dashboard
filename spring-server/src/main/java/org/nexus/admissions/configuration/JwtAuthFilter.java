@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import org.nexus.admissions.model.Admin;
@@ -37,6 +38,11 @@ public class JwtAuthFilter extends OncePerRequestFilter {
      * changed. Comparing against that instant (rather than maintaining a token
      * blacklist) keeps the JWT stateless while still letting a password change
      * end every session that predates it.
+     *
+     * <p>Both sides are compared at whole-second resolution because that is all
+     * a JWT {@code iat} carries; comparing at millisecond resolution would
+     * reject the replacement token handed to the browser that just changed the
+     * password.
      */
     private boolean isStale(Long adminId, Date issuedAt) {
         LocalDateTime changedAt = adminService.findById(adminId)
@@ -45,7 +51,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         if (changedAt == null) {
             return false;
         }
-        return issuedAt.toInstant().isBefore(changedAt.atZone(ZoneId.systemDefault()).toInstant());
+        LocalDateTime issued = LocalDateTime.ofInstant(issuedAt.toInstant(), ZoneId.systemDefault())
+                .truncatedTo(ChronoUnit.SECONDS);
+        return issued.isBefore(changedAt.truncatedTo(ChronoUnit.SECONDS));
     }
 
     @Override

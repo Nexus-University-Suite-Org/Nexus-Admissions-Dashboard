@@ -4,6 +4,7 @@ import jakarta.transaction.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,7 +91,11 @@ public AdminLoginResponse changePassword(Long adminId, PasswordChangeRequest req
             throw new UnauthorizedException("Current password is incorrect.");
         }
 
-        LocalDateTime changedAt = LocalDateTime.now();
+        // Truncate to whole seconds: JWT 'iat' is a NumericDate, so it carries no
+        // sub-second component. Keeping milliseconds here made the token minted
+        // on the next line look older than the change that authorised it, and
+        // the browser that performed the change was logged straight back out.
+        LocalDateTime changedAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS);
         admin.setPasswordHash(passwordEncoder.encode(request.newPassword()));
         admin.setPasswordChangedAt(changedAt);
         Admin saved = adminService.update(admin);
