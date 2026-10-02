@@ -3884,6 +3884,7 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
 
 function AdminSettingsPage() {
   const hasToken = Boolean(localStorage.getItem('nap_admin_token'));
+  const qc = useQueryClient();
   const { data: adminProfile, error: adminProfileError, isFetching: profileFetching } = useGetAdminMe({ query: { enabled: hasToken, retry: false, queryKey: getGetAdminMeQueryKey() } });
   const updateProfileMutation = useMutation({
     mutationFn: (data: { fullName: string; email: string }) => {
@@ -3894,12 +3895,25 @@ function AdminSettingsPage() {
         headers: { 'Content-Type': 'application/json' },
       });
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       debugLog('[ADMIN-SET] profile update succeeded', {
         fullName: result?.fullName ?? null,
         email: result?.email ?? null,
         tokenReturned: Boolean(result?.token),
       });
+      // AuthGate renders the sidebar identity from this same query key, so the
+      // cached entry must be invalidated or the sidebar keeps the old email.
+      // Seed the cache from the mutation result to update the sidebar
+      // immediately, then refetch to confirm against the backend.
+      qc.setQueryData(getGetAdminMeQueryKey(), (prev: any) => ({
+        ...(prev ?? {}),
+        fullName: result?.fullName ?? prev?.fullName,
+        email: result?.email ?? prev?.email,
+        token: result?.token ?? null,
+      }));
+      debugLog('[ADMIN-SET] sidebar identity updated from mutation result');
+      await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      debugLog('[ADMIN-SET] invalidated /auth/me, refetching');
     },
     onError: (err) => traceApiError('[ADMIN-SET] profile update', err),
   });
