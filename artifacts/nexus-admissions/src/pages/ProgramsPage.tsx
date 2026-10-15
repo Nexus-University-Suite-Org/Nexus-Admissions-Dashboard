@@ -1,12 +1,14 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useLocation } from 'wouter';
 import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/config';
+import { debugLog, traceApiError } from '@/lib/debug';
 
-const NAP_API = 'http://localhost:8080';
+const NAP_API = API_BASE_URL;
 
 type Program = {
   id: number; programName: string; programCode: string; programType: string;
@@ -50,20 +52,64 @@ export default function ProgramsPage() {
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: programs = [], isLoading } = useQuery({
+  const { data: programs = [], isLoading, error: programsError, status: programsStatus } = useQuery({
     queryKey: ['admin-programs'],
     queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
   });
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], error: categoriesError, status: categoriesStatus } = useQuery({
     queryKey: ['admin-program-categories'],
     queryFn: () => customFetch<ProgramCategory[]>(`${NAP_API}/api/v1/admin/program-categories`),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-programs'] }),
+    onSuccess: (_data, id) => {
+      debugLog('[PROGRAMS] delete accepted', { id });
+      queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
+    },
+    onError: (err) => traceApiError('[PROGRAMS] delete failed', err),
   });
+
+  useEffect(() => {
+    debugLog('[PROGRAMS] mounted — loading from', `${NAP_API}/api/v1/admin/programs`);
+    return () => debugLog('[PROGRAMS] unmounted');
+  }, []);
+
+  // Log once per real load, not per render.
+  const programsState = `${programsStatus}:${programs.length}`;
+  const prevProgramsState = useRef(programsState);
+  useEffect(() => {
+    if (prevProgramsState.current === programsState) return;
+    const previous = prevProgramsState.current;
+    prevProgramsState.current = programsState;
+    debugLog('[PROGRAMS] list loaded', {
+      previous,
+      result: { status: programsStatus, programs: programs.length },
+      url: `${NAP_API}/api/v1/admin/programs`,
+    });
+  }, [programsState, programsStatus, programs.length]);
+
+  const categoriesState = `${categoriesStatus}:${categories.length}`;
+  const prevCategoriesState = useRef(categoriesState);
+  useEffect(() => {
+    if (prevCategoriesState.current === categoriesState) return;
+    const previous = prevCategoriesState.current;
+    prevCategoriesState.current = categoriesState;
+    debugLog('[PROGRAMS] categories loaded', {
+      previous,
+      result: { status: categoriesStatus, categories: categories.length },
+      url: `${NAP_API}/api/v1/admin/program-categories`,
+    });
+  }, [categoriesState, categoriesStatus, categories.length]);
+
+  useEffect(() => {
+    if (programsError) traceApiError('[PROGRAMS] load list', programsError);
+  }, [programsError]);
+
+  useEffect(() => {
+    if (categoriesError) traceApiError('[PROGRAMS] load categories', categoriesError);
+  }, [categoriesError]);
 
   const filtered = programs.filter(p => {
     if (search && !p.programName.toLowerCase().includes(search.toLowerCase()) && !p.programCode?.toLowerCase().includes(search.toLowerCase())) return false;
@@ -72,6 +118,22 @@ export default function ProgramsPage() {
     return true;
   });
 
+  // Client-side filtering: log when the result set actually changes.
+  const filteredState = `${programs.length}:${filtered.length}:${search}:${filterType}:${filterStatus}`;
+  const prevFilteredState = useRef(filteredState);
+  useEffect(() => {
+    if (prevFilteredState.current === filteredState) return;
+    const previous = prevFilteredState.current;
+    prevFilteredState.current = filteredState;
+    debugLog('[PROGRAMS] filters applied', {
+      filters: { search: search || null, type: filterType || null, status: filterStatus || null },
+      shown: filtered.length,
+      total: programs.length,
+      previous,
+      note: filtered.length === 0 && programs.length > 0 ? 'filters matched nothing' : null,
+    });
+  }, [filteredState, filtered.length, programs.length, search, filterType, filterStatus]);
+
   const statusColor = (s: string) => {
     if (s === 'Active') return 'bg-emerald-100 text-emerald-700';
     if (s === 'Inactive') return 'bg-gray-100 text-gray-600';
@@ -79,8 +141,8 @@ export default function ProgramsPage() {
     return 'bg-red-100 text-red-600';
   };
 
-  const openEdit = (p: Program) => { setEditingProgram(p); setShowForm(true); };
-  const openNew = () => { setEditingProgram(null); setShowForm(true); };
+  const openEdit = (p: Program) => { debugLog('[PROGRAMS] open edit form', { id: p.id, programCode: p.programCode }); setEditingProgram(p); setShowForm(true); };
+  const openNew = () => { debugLog('[PROGRAMS] open create form'); setEditingProgram(null); setShowForm(true); };
 
   if (showForm) {
     return <ProgramForm program={editingProgram} categories={categories} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
@@ -110,7 +172,7 @@ export default function ProgramsPage() {
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search programmes..." className="pl-9" />
+          <Input value={search} onChange={(e) => { debugLog('[PROGRAMS] search changed', { value: e.target.value }); setSearch(e.target.value); }} placeholder="Search programmes..." className="pl-9" />
         </div>
       </div>
 
@@ -130,7 +192,8 @@ export default function ProgramsPage() {
         <div className="space-y-3">
           {filtered.map(p => (
             <div key={p.id} className="nexus-card rounded-2xl border overflow-hidden">
-              <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)} className="w-full flex items-center gap-4 p-5 text-left hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+              <div className="w-full flex items-center gap-4 p-5 text-left">
+                <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-controls={`program-details-${p.id}`} className="flex items-center gap-4 flex-1 min-w-0 text-left rounded-lg hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
                 <GripVertical size={16} className="text-[hsl(var(--muted-foreground))] opacity-30 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -150,14 +213,17 @@ export default function ProgramsPage() {
                     {p.categoryNames?.length > 0 && <span className="text-accent">{p.categoryNames.join(', ')}</span>}
                   </div>
                 </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }}><Pencil size={14} /></Button>
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) deleteMutation.mutate(p.id); }} className="text-red-500 hover:text-red-600"><Trash2 size={14} /></Button>
-                  {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }} aria-label={`Edit ${p.programName}`}><Pencil size={14} /></Button>
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) { debugLog('[PROGRAMS] delete confirmed', { id: p.id, programCode: p.programCode }); deleteMutation.mutate(p.id); } else { debugLog('[PROGRAMS] delete cancelled', { id: p.id }); } }} className="text-red-500 hover:text-red-600" aria-label={`Delete ${p.programName}`}><Trash2 size={14} /></Button>
+                  <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-label={expandedId === p.id ? `Collapse ${p.programName}` : `Expand ${p.programName}`} className="rounded-md p-1 hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+                    {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
                 </div>
-              </button>
+              </div>
               {expandedId === p.id && (
-                <div className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
+                <div id={`program-details-${p.id}`} className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
                   {p.shortDescription && <p className="text-sm text-[hsl(var(--muted-foreground))]">{p.shortDescription}</p>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div><span className="text-[hsl(var(--muted-foreground))]">Department:</span> <span className="font-medium">{p.department || '—'}</span></div>
@@ -216,7 +282,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const [toast, setToast] = useState<string | null>(null);
   const [collapsedYears, setCollapsedYears] = useState<Set<string>>(new Set());
   const [collapsedFeeYears, setCollapsedFeeYears] = useState<Set<string>>(new Set());
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const showToast = (msg: string) => { setToast(msg); clearTimeout(toastTimer.current); toastTimer.current = setTimeout(() => setToast(null), 3000); };
 
@@ -240,9 +306,9 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
     intakeYear: program?.intakeYear || '',
   });
 
-  const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester: number; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
+  const [fees, setFees] = useState(() => parseJson(program?.fees, { currency: 'UGX', year_fees: [] as { year: number; semesters: { semester?: number; name?: string; termType?: 'semester' | 'recess'; tuition: number; registration: number; examination: number; functional: number; ict: number; library: number; medical: number; accommodation: number; other: number; total: number }[] }[] }));
   const [admissionReq, setAdmissionReq] = useState(() => parseJson(program?.admissionRequirements, { min_qualification: '', min_grade: '', required_subjects: '', min_points: '', direct_entry: '', diploma_entry: '', mature_age_entry: '', international: '', other: '' }));
-  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }[] }));
+  const [curriculum, setCurriculum] = useState(() => parseJson(program?.curriculum, { curriculum_name: '', version: '', academic_year: '', total_credit_units: 0, years: [] as { year: number; semesters: { semester: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups?: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[]; recessTerms: { name: string; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[]; electiveGroups?: { groupName: string; requiredCount: number; courses: { code: string; name: string; credits: number; type: string; prerequisites: string }[] }[] }[] }[] }));
   const [intakesList, setIntakesList] = useState(() => parseJson(program?.intakes, [] as { name: string; month: string; academic_year: string; app_open: string; app_close: string; admission_start: string; max_students: number; status: string }[]));
   const [accreditation, setAccreditation] = useState(() => parseJson(program?.accreditation, { status: '', body: '', number: '', date: '', expiry: '', document_url: '' }));
   const [documentsList, setDocumentsList] = useState(() => parseJson(program?.documents, [] as { type: string; name: string; url: string }[]));
@@ -258,23 +324,33 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
       return customFetch(`${NAP_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     },
     onSuccess: async (saved: Program) => {
+      debugLog('[PROGRAMS] save accepted', {
+        mode: program?.id ? 'update' : 'create',
+        id: saved.id,
+        programCode: saved.programCode,
+        syncingCategories: { removing: program?.id ? 'pending' : 'n/a', adding: selectedCategoryIds.length },
+      });
       // Sync categories
       if (program?.id) {
         const currentCats = categories.filter(c => c.programs.some(p => p.id === program.id)).map(c => c.id);
         for (const catId of currentCats) {
           if (!selectedCategoryIds.includes(catId)) {
+            debugLog('[PROGRAMS] detaching category', { programId: program.id, categoryId: catId });
             await customFetch(`${NAP_API}/api/v1/admin/programs/${program.id}/categories/${catId}`, { method: 'DELETE' });
           }
         }
       }
       for (const catId of selectedCategoryIds) {
+        debugLog('[PROGRAMS] attaching category', { programId: saved.id, categoryId: catId });
         await customFetch(`${NAP_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' });
       }
+      debugLog('[PROGRAMS] categories synced, invalidating caches', { programId: saved.id });
       queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
       queryClient.invalidateQueries({ queryKey: ['admin-program-categories'] });
       showToast(program ? 'Program updated successfully' : 'Program created successfully');
       setTimeout(() => onClose(), 800);
     },
+    onError: (err) => traceApiError('[PROGRAMS] save failed', err),
   });
 
   const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
@@ -282,7 +358,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const addYear = () => {
     const newYear = { year: curriculum.years.length + 1, semesters: [] as typeof curriculum.years[0]['semesters'], recessTerms: [] as typeof curriculum.years[0]['recessTerms'] };
     for (let s = 1; s <= (form.semestersPerYear || 2); s++) {
-      newYear.semesters.push({ semester: s, courses: [] });
+      newYear.semesters.push({ semester: s, courses: [], electiveGroups: [] });
     }
     setCurriculum(c => ({ ...c, years: [...c.years, newYear] }));
     set('numberOfYears', curriculum.years.length + 1);
@@ -291,7 +367,7 @@ function ProgramForm({ program, categories, onClose }: { program: Program | null
   const addRecessTerm = (yearIdx: number) => {
     setCurriculum(c => ({
       ...c,
-      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: [...y.recessTerms, { name: `Recess Term ${y.recessTerms.length + 1}`, courses: [] }] } : y)
+      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: [...y.recessTerms, { name: `Recess Term ${y.recessTerms.length + 1}`, courses: [], electiveGroups: [] }] } : y)
     }));
   };
 
@@ -1014,11 +1090,11 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function TextareaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function TextareaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div>
-      <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}</label>
-      <textarea value={value || ''} onChange={e => onChange(e.target.value)} className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm min-h-[80px]" />
+    <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">{label}</label>
+    <textarea value={value || ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm min-h-[80px]" />
     </div>
   );
 }

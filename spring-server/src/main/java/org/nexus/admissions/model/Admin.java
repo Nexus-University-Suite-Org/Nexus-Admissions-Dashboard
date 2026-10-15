@@ -29,6 +29,14 @@ public class Admin {
     @Column(name = "full_name", length = 200)
     private String fullName;
 
+    /**
+     * When the password was last changed. Tokens issued before this instant are
+     * rejected by JwtAuthFilter, so changing the password ends every session
+     * that was started with the old one.
+     */
+    @Column(name = "password_changed_at")
+    private LocalDateTime passwordChangedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 }

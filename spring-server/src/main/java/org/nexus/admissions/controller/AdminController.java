@@ -42,12 +42,8 @@ public class AdminController {
 
     @GetMapping("/auth/me")
     public ResponseEntity<AdminLoginResponse> me(Authentication authentication) {
-        System.out.println("[ADMIN-CONTROLLER] /auth/me called | authentication=" + authentication);
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        System.out.println("[ADMIN-CONTROLLER] principal: id=" + principal.id() + ", email=" + principal.email());
-        AdminLoginResponse response = adminFacade.me(principal.id());
-        System.out.println("[ADMIN-CONTROLLER] /auth/me returning: email=" + response.email() + ", fullName=" + response.fullName());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(adminFacade.me(principal.id()));
     }
 
     @PutMapping("/auth/profile")
@@ -59,12 +55,11 @@ public class AdminController {
     }
 
     @PutMapping("/auth/password")
-    public ResponseEntity<Map<String, String>> changePassword(
+    public ResponseEntity<AdminLoginResponse> changePassword(
             Authentication authentication,
             @Valid @RequestBody PasswordChangeRequest request) {
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        adminFacade.changePassword(principal.id(), request);
-        return ResponseEntity.ok(Map.of("status", "ok", "message", "Password changed successfully."));
+        return ResponseEntity.ok(adminFacade.changePassword(principal.id(), request));
     }
 
     @GetMapping("/dashboard/stats")

@@ -5,8 +5,9 @@ import { customFetch } from '@workspace/api-client-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Pencil, Trash2, ArrowLeft, X, GripVertical } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/config';
 
-const NAP_API = 'http://localhost:8080';
+const NAP_API = API_BASE_URL;
 
 type ProgramCategory = {
   id: number; name: string; description: string; displayOrder: number;

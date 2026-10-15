@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" width="1200" height="675" role="img" aria-label="Laws">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#g)"/>
+  <circle cx="150" cy="120" r="180" fill="#8b5cf6" opacity="0.10"/>
+  <circle cx="1080" cy="600" r="240" fill="#8b5cf6" opacity="0.08"/>
+  <rect x="0" y="520" width="1200" height="6" fill="#8b5cf6" opacity="0.55"/>
+  <g transform="translate(120 210)">
+    <rect x="0" y="60" width="86" height="150" rx="8" fill="#8b5cf6" opacity="0.85"/>
+    <rect x="26" y="0" width="86" height="150" rx="8" fill="#8b5cf6"/>
+    <rect x="52" y="60" width="86" height="150" rx="8" fill="#8b5cf6" opacity="0.55"/>
+  </g>
+  <text x="300" y="290" font-family="ui-sans-serif, system-ui, sans-serif" font-size="30" font-weight="600" fill="#94a3b8" letter-spacing="4">BLLB-LAW</text>
+  <text x="300" y="360" font-family="ui-serif, Georgia, serif" font-size="62" font-weight="300" fill="#f8fafc">Laws</text>
+  <text x="300" y="415" font-family="ui-sans-serif, system-ui, sans-serif" font-size="26" fill="#64748b">Programme image placeholder</text>
+</svg>

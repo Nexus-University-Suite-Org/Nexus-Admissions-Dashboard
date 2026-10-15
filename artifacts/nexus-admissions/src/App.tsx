@@ -30,6 +30,7 @@ import {
   Pencil,
   PanelLeftClose,
   RefreshCw,
+  Save,
   Search,
   Settings,
   ShieldCheck,
@@ -69,13 +70,39 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import DebugBoundary from '@/components/DebugBoundary';
+import { API_BASE_URL, NAD_API_BASE_URL } from '@/lib/config';
+import { loginFailureFeedback, sessionExpiredFeedback } from '@/lib/authFeedback';
+import { toast } from '@/hooks/use-toast';
+import { debugLog, debugWarn, installFetchTracer, logConfig, setDebug, traceApiError, traceRequest, debugEnabled } from '@/lib/debug';
 import './index.css';
 
-const NAD_API = 'http://localhost:8083';
-const NAP_API = 'http://localhost:8080';
-const queryClient = new QueryClient();
-setBaseUrl('http://localhost:8083');
+const NAD_API = NAD_API_BASE_URL;
+const NAP_API = API_BASE_URL;
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Do not retry 4xx. A 400/401/403/404 is deterministic: retrying it just
+      // fills the console with identical requests and hides the real failure.
+      // 5xx and network errors are still retried twice.
+      retry: (failureCount: number, error: unknown) => {
+        const status =
+          (error as { status?: number } | null)?.status ??
+          (error as { response?: { status?: number } } | null)?.response?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          debugWarn('[QUERY] not retrying 4xx', { status });
+          return false;
+        }
+        return failureCount < 2;
+      },
+    },
+  },
+});
+setBaseUrl(NAD_API_BASE_URL);
 setAuthTokenGetter(() => localStorage.getItem('nap_admin_token'));
+
+// Trace every cross-origin fetch while debugging is enabled.
+installFetchTracer();
 
 function timeAgo(dateStr: string): string {
   if (!dateStr) return '';
@@ -107,6 +134,22 @@ function useUpdateSiteSetting() {
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'site-settings'] }),
+  });
+}
+
+function useBulkUpdateSiteSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entries: Array<[string, string]>) => {
+      for (const [settingKey, settingValue] of entries) {
+        await customFetch<{ id: number; settingKey: string; settingValue: string }>('/api/v1/admin/site-settings', {
+          method: 'PUT',
+          body: JSON.stringify({ settingKey, settingValue }),
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'site-settings'] }),
   });
 }
@@ -287,16 +330,51 @@ function AuthGate({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
   const token = localStorage.getItem('nap_admin_token');
   const me = useGetAdminMe({ query: { enabled: Boolean(token), queryKey: getGetAdminMeQueryKey(), retry: false } });
-  console.log('[AUTH-GATE] token:', token ? token.substring(0, 20) + '...' : 'null', '| status:', me.status, '| fetchStatus:', me.fetchStatus, '| isError:', me.isError, '| data:', me.data);
-  if (me.isError) console.error('[AUTH-GATE] /auth/me error:', me.error);
+
+  // Token is never logged in full - only presence/length.
+  debugLog('[AUTH-GATE]', {
+    hasToken: Boolean(token),
+    tokenLength: token?.length ?? 0,
+    status: me.status,
+    fetchStatus: me.fetchStatus,
+    isError: me.isError,
+    user: me.data ? { email: me.data.email, role: (me.data as { role?: string }).role } : null,
+  });
+
+  if (me.isError) traceApiError('[AUTH-GATE] /auth/me', me.error);
+
   useEffect(() => {
-    if (!token) { console.log('[AUTH-GATE] No token — redirecting to login'); setLocation('/admin/login'); return; }
-    if (me.isError) { console.log('[AUTH-GATE] Auth failed — redirecting to login'); localStorage.removeItem('nap_admin_token'); setLocation('/admin/login'); }
+    debugLog('[AUTH-GATE] mounted', {
+      path: location.pathname,
+      hasToken: Boolean(token),
+      meStatus: me.status,
+    });
+    if (!token) {
+      debugWarn('[AUTH-GATE] no token in localStorage -> redirecting to /admin/login');
+      setLocation('/admin/login');
+      return;
+    }
+    if (me.isError) {
+      debugWarn('[AUTH-GATE] /auth/me rejected the token -> clearing and redirecting', {
+        tokenLength: token?.length ?? 0,
+      });
+      localStorage.removeItem('nap_admin_token');
+      toast(sessionExpiredFeedback());
+      setLocation('/admin/login');
+    }
   }, [me.isError, me.error, setLocation, token]);
-  if (!token || me.status === 'pending') return <PageLoader label="Checking secure access" />;
-  if (me.isError) return null;
-  if (!me.data) return <PageLoader label="Checking secure access" />;
-  return <Shell identity={me.data}>{children}</Shell>;
+
+  return (
+    <DebugBoundary>
+      {!token || me.status === 'pending' ? (
+        <PageLoader label="Checking secure access" />
+      ) : me.isError ? null : !me.data ? (
+        <PageLoader label="Checking secure access" />
+      ) : (
+        <Shell identity={me.data}>{children}</Shell>
+      )}
+    </DebugBoundary>
+  );
 }
 
 function PartnersManager() {
@@ -364,7 +442,7 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         setForm(prev => ({ ...prev, logoUrl: data.url || data.fileUrl || '' }));
@@ -435,11 +513,83 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const [dbgOn, setDbgOn] = useState(() => debugEnabled());
+
+  useEffect(() => {
+    logConfig(NAP_API, NAD_API);
+    debugLog('LoginPage mounted at', location.pathname);
+
+    // Probe both Railway backends so we can see whether the browser can
+    // reach them at all, independent of the login attempt.
+    void (async () => {
+      if (!debugEnabled()) return;
+      debugLog('running connectivity probes...');
+      try {
+        await traceRequest('probe-NAP', `${NAP_API}/api/v1/admin/programs`, { method: 'GET' });
+      } catch { /* already logged */ }
+      try {
+        await traceRequest('probe-NAD', `${NAD_API}/api/v1/admin/partners`, { method: 'GET' });
+      } catch { /* already logged */ }
+      debugLog('probes finished');
+    })();
+
+    return () => debugLog('LoginPage unmounted');
+  }, []);
+
+  const toggleDebug = () => {
+    const next = !dbgOn;
+    setDebug(next);
+    setDbgOn(next);
+    if (next) {
+      debugLog('debug logging ENABLED - reloading to re-run startup probes');
+      setTimeout(() => location.reload(), 50);
+    }
+  };
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!email || !password) return;
-    console.log('[LOGIN] Submitting login for:', email);
-    login.mutate({ data: { email, password } }, { onSuccess: (session) => { console.log('[LOGIN] Success — token:', session.token?.substring(0, 20) + '...'); localStorage.setItem('nap_admin_token', session.token); setLocation('/admin'); }, onError: (err) => { console.error('[LOGIN] Failed:', err); } });
+    if (!email || ! password) {
+      debugWarn('[LOGIN] blocked submit - missing email or password', {
+        hasEmail: Boolean(email),
+        hasPassword: Boolean(password),
+      });
+      return;
+    }
+    debugLog('[LOGIN] submitting', {
+      email,
+      password: '<redacted>',
+      targetBaseUrl: NAD_API,
+      expectedRequestUrl: `${NAD_API}/api/v1/admin/auth/login`,
+    });
+    login.mutate(
+      { data: { email, password } },
+      {
+        onSuccess: (session) => {
+          debugLog('[LOGIN] success', {
+            tokenReceived: Boolean(session?.token),
+            tokenLength: session?.token?.length ?? 0,
+          });
+          localStorage.setItem('nap_admin_token', session.token);
+          debugLog('[LOGIN] token stored, navigating to /admin');
+          toast({
+            title: 'Signed in',
+            description: `Welcome back, ${session?.fullName || 'administrator'}.`,
+          });
+          setLocation('/admin');
+        },
+        onError: (err) => {
+          traceApiError('[LOGIN]', err);
+          debugWarn('[LOGIN] common causes:', [
+            'backend returns 401 -> wrong credentials',
+            'backend returns 403 -> CORS missing this origin, or role check',
+            'network error -> blocked by ad-blocker, offline, or CORS preflight',
+            'verify the NAD URL above is the admissions backend, not the NAP backend',
+          ]);
+          toast(loginFailureFeedback(err));
+        },
+      },
+    );
   };
   return (
     <div className="flex min-h-[100dvh] bg-[hsl(var(--background))]">
@@ -454,13 +604,22 @@ function LoginPage() {
         <form onSubmit={submit} className="space-y-5">
           <label className="block"><span className="mb-2 block text-xs font-semibold">Work email</span><Input data-testid="input-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@nexus.ac.ug" autoComplete="email" className="h-12 bg-[hsl(var(--card))] px-4" /></label>
           <label className="block"><div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">Password</span><button type="button" data-testid="button-toggle-password" onClick={() => setShowPassword(!showPassword)} className="text-[11px] text-[hsl(var(--primary))] hover:underline">{showPassword ? 'Hide' : 'Show'}</button></div><Input data-testid="input-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" className="h-12 bg-[hsl(var(--card))] px-4" /></label>
-          {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">We couldn't sign you in. Check your email and password, then try again.</div>}
+          {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">{loginFailureFeedback(login.error).description}</div>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
-         <div className="mt-5 rounded-xl border border-[hsl(var(--accent)/.35)] bg-[hsl(var(--accent)/.08)] px-4 py-3 text-[11px] leading-5 text-[hsl(var(--foreground)/.75)]"><p className="nexus-kicker mb-1 text-[hsl(var(--primary))]">Demo access</p><p>admin@nexus.edu <span className="mx-1 opacity-40">·</span> admin123</p></div>
-        <div className="mt-12 flex items-start gap-3 border-t border-[hsl(var(--border))] pt-5 text-[11px] leading-5 text-[hsl(var(--muted-foreground))]"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /><p>Access is monitored and protected. If you need assistance, contact the registrar's office.</p></div>
-      </div></div>
-    </div>
+         </div></div>
+        <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
+          <div className="flex items-center justify-between gap-3">
+            <span>Debug: <strong className="text-[hsl(var(--foreground))]">{dbgOn ? 'ON' : 'off'}</strong></span>
+            <button type="button" onClick={toggleDebug} data-testid="button-debug-toggle" className="rounded-md border border-[hsl(var(--border))] px-2 py-1 text-[10px] font-semibold text-[hsl(var(--primary))] hover:bg-[hsl(var(--muted)/.2)]">
+              {dbgOn ? 'Disable' : 'Enable'}
+            </button>
+          </div>
+          <p className="mt-1">NAP: <span className="break-all">{NAP_API}</span></p>
+          <p>NAD: <span className="break-all">{NAD_API}</span></p>
+          {dbgOn && <p className="mt-1 text-[hsl(var(--primary))]">Open DevTools &rarr; Console for [NAD-DEBUG] output.</p>}
+        </div>
+     </div>
   );
 }
 
@@ -476,10 +635,27 @@ function DashboardPage() {
   const intakeYear = activeScheme?.academicYear || '—';
   const intakeLabel = activeScheme ? `${activeScheme.academicYear} intake` : 'No active intake';
 
-  console.log('[DASH] stats loading:', stats.isLoading, 'error:', stats.error, 'data:', stats.data);
-  console.log('[DASH] recent loading:', recent.isLoading, 'error:', recent.error, 'data:', recent.data);
-  if (stats.error) console.error('[DASH] stats error:', stats.error);
-  if (recent.error) console.error('[DASH] recent error:', recent.error);
+  // Debug-gated: these describe state transitions, not every render.
+  const dashState = `${stats.status}/${recent.status}`;
+  const prevDashState = useRef(dashState);
+  useEffect(() => {
+    if (prevDashState.current === dashState) return;
+    prevDashState.current = dashState;
+    debugLog('[DASH] state change', {
+      stats: { status: stats.status, isError: stats.isError },
+      recent: { status: recent.status, isError: recent.isError, count: recent.data?.length ?? 0 },
+      activeScheme: activeScheme ? { academicYear: activeScheme.academicYear } : null,
+    });
+  }, [dashState, stats.status, stats.isError, recent.status, recent.isError, recent.data?.length, activeScheme]);
+
+  useEffect(() => {
+    if (stats.error) traceApiError('[DASH] stats', stats.error);
+    if (recent.error) traceApiError('[DASH] recent applications', recent.error);
+  }, [stats.error, recent.error]);
+
+  useEffect(() => {
+    debugLog('[DASH] mounted — stats:', `${NAD_API}/api/v1/admin/dashboard/stats`);
+  }, []);
 
   if (stats.isLoading) return <PageLoader label="Gathering admissions overview" />;
   if (stats.isError) return <ErrorState retry={() => stats.refetch()} />;
@@ -513,14 +689,43 @@ function ApplicationsPage() {
   const results = useGetAdminApplications(params);
   const content = results.data?.content || [];
 
-  console.log('[APPS] loading:', results.isLoading, 'error:', results.error, 'data:', results.data, 'content length:', content.length);
-  if (results.error) console.error('[APPS] fetch error:', results.error);
-  if (results.data) console.log('[APPS] totalElements:', results.data.totalElements, 'totalPages:', results.data.totalPages);
+  // Debug-gated, and only on real state changes (not every render).
+  const appsState = `${results.status}:${results.data?.totalElements ?? 'na'}:${params.search ?? ''}:${params.status}:${params.page}:${params.size}`;
+  const prevAppsState = useRef(appsState);
+  useEffect(() => {
+    if (prevAppsState.current === appsState) return;
+    const prev = prevAppsState.current;
+    prevAppsState.current = appsState;
+    debugLog('[APPS] state change', {
+      filters: { search: params.search || null, status: params.status, page: params.page, size: params.size },
+      previous: prev,
+      result: {
+        status: results.status,
+        isError: results.isError,
+        totalElements: results.data?.totalElements ?? null,
+        totalPages: results.data?.totalPages ?? null,
+        rowsOnPage: content.length,
+      },
+      url: `${NAD_API_BASE_URL}/api/v1/admin/applications`,
+    });
+  }, [appsState, params.search, params.status, params.page, params.size, results.status, results.isError, results.data?.totalElements, results.data?.totalPages, content.length]);
+
+  useEffect(() => {
+    if (results.error) traceApiError('[APPS] list applications', results.error);
+  }, [results.error]);
+
+  useEffect(() => {
+    debugLog('[APPS] mounted — listing from', `${NAD_API_BASE_URL}/api/v1/admin/applications`);
+    return () => debugLog('[APPS] unmounted');
+  }, []);
   const hasFilters = Boolean(search || status !== 'ALL');
-  const clearFilters = () => { setSearch(''); setStatus('ALL'); setPage(0); };
+  const clearFilters = () => {
+    debugLog('[APPS] clearing filters', { was: { search: search || null, status, page } });
+    setSearch(''); setStatus('ALL'); setPage(0);
+  };
   return <div className="space-y-7">
     <section className="fade-up flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="nexus-kicker mb-3 text-[hsl(var(--primary))]">Application register</p><h1 className="nexus-serif text-4xl tracking-tight md:text-5xl">Applications.</h1><p className="mt-3 text-sm text-[hsl(var(--muted-foreground))]">Search, filter and move each student’s application forward.</p></div><div className="nexus-mono text-right text-[10px] uppercase tracking-[.1em] text-[hsl(var(--muted-foreground))]"><span className="text-xl font-bold text-[hsl(var(--foreground))]">{results.data?.totalElements ?? '—'}</span><br />total records</div></section>
-    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="relative flex-1 sm:flex-none"><Filter size={14} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><select data-testid="select-status-filter" aria-label="Filter by status" value={status} onChange={(e) => { setStatus(e.target.value as GetAdminApplicationsParams['status']); setPage(0); }} className="h-11 w-full appearance-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-8 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] sm:w-44"><option value="ALL">All statuses</option><option value="SUBMITTED">Submitted</option><option value="ADMITTED">Admitted</option><option value="WAITLISTED">Waitlisted</option><option value="REJECTED">Rejected</option><option value="DRAFT">Draft</option></select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
+    <section className="nexus-card p-4 md:p-5"><div className="flex flex-col gap-3 lg:flex-row"><div className="relative flex-1"><Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><Input data-testid="input-application-search" type="search" value={search} onChange={(e) => { debugLog('[APPS] search changed', { value: e.target.value, resetPageTo: 0 }); setSearch(e.target.value); setPage(0); }} placeholder="Search by name, PRN or email" className="h-11 border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-10" /></div><div className="flex gap-3"><div className="relative flex-1 sm:flex-none"><Filter size={14} className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" /><select data-testid="select-status-filter" aria-label="Filter by status" value={status} onChange={(e) => { const next = e.target.value as GetAdminApplicationsParams['status']; debugLog('[APPS] status filter changed', { from: status, to: next, resetPageTo: 0 }); setStatus(next); setPage(0); }} className="h-11 w-full appearance-none rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] pl-9 pr-8 text-sm outline-none focus:ring-1 focus:ring-[hsl(var(--ring))] sm:w-44"><option value="ALL">All statuses</option><option value="SUBMITTED">Submitted</option><option value="ADMITTED">Admitted</option><option value="WAITLISTED">Waitlisted</option><option value="REJECTED">Rejected</option><option value="DRAFT">Draft</option></select></div><Button data-testid="button-filter-options" variant="outline" className="hidden h-11 gap-2 sm:inline-flex"><SlidersHorizontal size={15} /> <span className="hidden xl:inline">More filters</span></Button>{hasFilters && <Button data-testid="button-clear-filters" onClick={clearFilters} variant="ghost" className="h-11 px-3 text-xs">Clear</Button>}</div></div></section>
     <section className="nexus-card overflow-hidden">{results.isLoading ? <div className="space-y-3 p-5">{[1, 2, 3, 4, 5].map((n) => <div className="h-[68px] animate-pulse rounded-lg bg-[hsl(var(--muted))]" key={n} />)}</div> : results.isError ? <div className="p-6"><ErrorState message="The application register is temporarily unavailable." retry={() => results.refetch()} /></div> : content.length ? <><div className="hidden overflow-x-auto md:block"><table className="w-full border-collapse text-left"><thead><tr className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.4)] text-[10px] uppercase tracking-[.12em] text-[hsl(var(--muted-foreground))]"><th className="px-6 py-4 font-bold">Applicant</th><th className="px-4 py-4 font-bold">Programme</th><th className="px-4 py-4 font-bold">Submitted</th><th className="px-4 py-4 font-bold">Status</th><th className="px-6 py-4 text-right font-bold">Open</th></tr></thead><tbody className="divide-y divide-[hsl(var(--border))]">{content.map((app) => <ApplicationRow app={app} key={app.id} onOpen={() => setLocation(`/admin/applications/${app.id}`)} />)}</tbody></table></div><div className="divide-y divide-[hsl(var(--border))] md:hidden">{content.map((app) => <button data-testid={`card-application-${app.id}`} key={app.id} onClick={() => setLocation(`/admin/applications/${app.id}`)} className="flex w-full items-center gap-3 p-4 text-left"><div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{app.firstName} {app.lastName}</p><p className="mt-1 truncate text-xs text-[hsl(var(--muted-foreground))]">{app.prn} · {app.programChoice1}</p><div className="mt-2"><StatusPill status={app.status} /></div></div><ChevronRight size={17} /></button>)}</div><Pagination page={results.data?.page ?? page} totalPages={results.data?.totalPages ?? 0} size={size} total={results.data?.totalElements ?? 0} onPage={setPage} onSize={(next) => { setSize(next); setPage(0); }} /></> : <EmptyState title={hasFilters ? 'No matching applications' : 'No applications yet'} detail={hasFilters ? 'Try another search or remove the filters to widen the register.' : 'Submitted student applications will appear in this register.'} action={hasFilters ? <Button data-testid="button-empty-clear" onClick={clearFilters} variant="outline" className="mt-5">Clear filters</Button> : undefined} />}</section>
   </div>;
 }
@@ -532,28 +737,40 @@ function ApplicationRow({ app, onOpen }: { app: Application; onOpen: () => void 
   const handleQuickReview = (status: 'admitted' | 'rejected', e: React.MouseEvent) => {
     e.stopPropagation();
     const label = status === 'admitted' ? 'admit' : 'reject';
-    if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) return;
+    debugLog('[APPS] quick review requested', { id: app.id, decision: status, applicant: `${app.firstName} ${app.lastName}`, currentStatus: app.status });
+    if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) {
+      debugLog('[APPS] quick review cancelled by user', { id: app.id, decision: status });
+      return;
+    }
     review.mutate({ id: app.id, data: { reviewStatus: status as ApplicationReviewInputReviewStatus, notes: '' } }, {
       onSuccess: () => {
+        debugLog('[APPS] quick review succeeded', { id: app.id, decision: status });
         queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() });
         queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) });
       },
+      onError: (err) => traceApiError(`[APPS] quick review ${status} (id ${app.id})`, err),
     });
   };
   return <tr data-testid={`row-application-${app.id}`} className="group transition-colors hover:bg-[hsl(var(--muted)/.4)]"><td className="px-6 py-4"><button data-testid={`button-open-application-${app.id}`} onClick={onOpen} className="flex items-center gap-3 text-left"><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div><p className="text-sm font-semibold group-hover:text-[hsl(var(--primary))]">{app.firstName} {app.lastName}</p><p className="nexus-mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{app.prn}</p></div></button></td><td className="max-w-[220px] truncate px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{app.programChoice1 || 'Not selected'}<br /><span className="text-[10px]">{app.studyMode || 'Study mode not set'}</span></td><td className="px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{formatDate(app.submittedAt || app.createdAt)}</td><td className="px-4 py-4"><StatusPill status={app.status} /></td><td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-1">{canReview && review.isPending !== true && <><button data-testid={`button-quick-admit-${app.id}`} onClick={(e) => handleQuickReview('admitted', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(160_43%_40%)] hover:bg-[hsl(160_43%_40%/.1)]"><CheckCircle2 size={13} /> Admit</button><button data-testid={`button-quick-reject-${app.id}`} onClick={(e) => handleQuickReview('rejected', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/.1)]"><XCircle size={13} /> Reject</button></>}<button data-testid={`button-view-application-${app.id}`} onClick={onOpen} className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--primary))]"><ExternalLink size={16} /></button></div></td></tr>;
 }
 
 function Pagination({ page, totalPages, size, total, onPage, onSize }: { page: number; totalPages: number; size: number; total: number; onPage: (page: number) => void; onSize: (size: number) => void }) {
-  if (!total) return null;
-  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <select data-testid="select-page-size" value={size} onChange={(e) => onSize(Number(e.target.value))} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-xs"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => onPage(page - 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => onPage(page + 1)} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
+  useEffect(() => {
+    debugLog('[APPS] pagination render', { page, size, total, totalPages, visibleRows: total ? Math.min((page + 1) * size, total) - page * size : 0 });
+  }, [page, size, total, totalPages]);
+  if (!total) {
+    debugLog('[APPS] pagination hidden — total is 0');
+    return null;
+  }
+  return <div className="flex flex-col items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-5 py-4 text-xs text-[hsl(var(--muted-foreground))] sm:flex-row"><p>Showing <span className="font-semibold text-[hsl(var(--foreground))]">{page * size + 1}–{Math.min((page + 1) * size, total)}</span> of <span className="font-semibold text-[hsl(var(--foreground))]">{total}</span></p><div className="flex items-center gap-2"><label className="mr-2 flex items-center gap-2">Rows <select data-testid="select-page-size" value={size} onChange={(e) => { const next = Number(e.target.value); debugLog('[APPS] page size changed', { from: size, to: next }); onSize(next); }} className="rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-2 py-1 text-xs"><option value="10">10</option><option value="20">20</option><option value="50">50</option></select></label><button data-testid="button-page-previous" aria-label="Previous page" disabled={page <= 0} onClick={() => { debugLog('[APPS] page change', { from: page, to: page - 1 }); onPage(page - 1); }} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronLeft size={15} /></button><span className="nexus-mono min-w-16 text-center text-[10px]">{page + 1} / {Math.max(totalPages, 1)}</span><button data-testid="button-page-next" aria-label="Next page" disabled={page >= totalPages - 1} onClick={() => { debugLog('[APPS] page change', { from: page, to: page + 1 }); onPage(page + 1); }} className="rounded-md border border-[hsl(var(--border))] p-1.5 disabled:opacity-30"><ChevronRight size={15} /></button></div></div>;
 }
 
 function DetailField({ label, value, mono = false }: { label: string; value?: string | number | boolean | null; mono?: boolean }) {
   return <div><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">{label}</p><p data-testid={`detail-${label.toLowerCase().replaceAll(' ', '-')}`} className={`mt-1.5 text-sm ${mono ? 'nexus-mono text-xs' : ''}`}>{typeof value === 'boolean' ? (value ? 'Verified' : 'Not verified') : value || '—'}</p></div>;
 }
 
-const API_BASE = 'http://localhost:8080';
+const API_BASE = API_BASE_URL;
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 function DocumentField({ label, url }: { label: string; url?: string | null }) {
@@ -583,7 +800,7 @@ function HeroImageField({ label, hint, value, onChange, onSave, saving }: { labe
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (res.ok) {
         const data = await res.json();
         const url = data.url || data.fileUrl || '';
@@ -627,9 +844,9 @@ function ReviewPanel({ app }: { app: Application }) {
     const label = choice === 'admitted' ? 'admit' : choice === 'waitlisted' ? 'waitlist' : 'reject';
     if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) return;
     const data = { reviewStatus: ApplicationReviewInputReviewStatus[choice], notes };
-    console.log('[ReviewPanel] submitting review', { id: app.id, choice, data });
+    debugLog('[APPS] review submitted', { id: app.id, choice, applicant: `${app.firstName} ${app.lastName}`, noteLength: notes.length });
     setErrorMsg('');
-    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { console.log('[ReviewPanel] review success', resp); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { console.error('[ReviewPanel] review FAILED', err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
+    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { debugLog('[APPS] review accepted', { id: app.id, choice, newStatus: resp?.status ?? null }); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { traceApiError(`[APPS] review ${choice} rejected (id ${app.id})`, err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
   };
   if (app.status !== ApplicationStatus.SUBMITTED && app.status !== ApplicationStatus.DRAFT) return <div className="nexus-card border-l-4 border-l-[hsl(var(--primary))] p-5"><div className="flex gap-3"><FileCheck2 size={18} className="mt-0.5 text-[hsl(var(--primary))]" /><div><p className="text-sm font-semibold">This application has been reviewed</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">The decision is <strong className="capitalize text-[hsl(var(--foreground))]">{statusLabel(app.status)}</strong>. Review controls are available only for draft and submitted records.</p>{app.reviewerNotes && <blockquote className="mt-4 border-l-2 border-[hsl(var(--border))] pl-3 text-sm italic text-[hsl(var(--muted-foreground))]">“{app.reviewerNotes}”</blockquote>}</div></div></div>;
   return <div className="nexus-card overflow-hidden border-[hsl(var(--accent)/.6)]"><div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--accent)/.12)] px-5 py-4"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(31_59%_28%)]" /><p className="text-sm font-bold">Record a decision</p></div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Choose one outcome and leave a clear audit note.</p></div><div className="space-y-5 p-5"><div className="grid grid-cols-3 gap-2">{(['admitted', 'waitlisted', 'rejected'] as const).map((option) => <button data-testid={`button-review-${option}`} key={option} onClick={() => setChoice(option)} className={`rounded-xl border px-2 py-3 text-xs font-semibold capitalize transition-all ${choice === option ? option === 'rejected' ? 'border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/.08)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)]'}`}>{option}</button>)}</div><label className="block"><span className="mb-2 block text-xs font-semibold">Reviewer note <span className="font-normal text-[hsl(var(--muted-foreground))]">(recommended)</span></span><textarea data-testid="textarea-review-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Add context for the decision…" className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none transition-shadow focus:ring-1 focus:ring-[hsl(var(--ring))]" /></label>{notice && <div data-testid="status-review-success" className="flex items-center gap-2 rounded-lg bg-[hsl(160_35%_85%)] px-3 py-2 text-xs text-[hsl(160_43%_25%)]"><CheckCircle2 size={14} /> {notice}</div>}{errorMsg && <div data-testid="status-review-error" className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">Error: {errorMsg}</div>}{review.isError && !errorMsg && <div className="text-xs text-[hsl(var(--destructive))]">We couldn't save this decision. Please try again.</div>}<Button data-testid="button-submit-review" onClick={submitReview} disabled={review.isPending} className="h-11 w-full rounded-xl font-bold">{review.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving decision</> : <><Check size={15} /> Confirm decision</>}</Button></div></div>;
@@ -744,9 +961,19 @@ function ApplicationDetailPage() {
   </div>;
 }
 
+function SectionSave({ onClick, pending, label = 'Save Changes' }: { onClick: () => void; pending: boolean; label?: string }) {
+  return (
+    <Button onClick={onClick} disabled={pending} className="mt-4">
+      {pending ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+      <span className="ml-2">{pending ? 'Saving\u2026' : label}</span>
+    </Button>
+  );
+}
+
 function SiteSettingsPage() {
   const settingsQuery = useGetSiteSettings();
   const updateMutation = useUpdateSiteSetting();
+  const bulkMutation = useBulkUpdateSiteSettings();
 
   const settings = settingsQuery.data || [];
   const getSetting = (key: string) => settings.find((s) => s.settingKey === key)?.settingValue || '';
@@ -1136,6 +1363,15 @@ function SiteSettingsPage() {
     }
   };
 
+  const saveSection = async (entries: Array<[string, string]>, sectionName: string) => {
+    try {
+      await bulkMutation.mutateAsync(entries);
+      showSaveToast('Saved', `${sectionName} has been updated successfully.`);
+    } catch {
+      showSaveToast('Error', 'Something went wrong. Please try again.');
+    }
+  };
+
   if (settingsQuery.status === 'pending') return <PageLoader label="Loading site settings" />;
 
   return (
@@ -1195,9 +1431,7 @@ function SiteSettingsPage() {
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The main name of the university shown in the header logo and footer.</p>
             <div className="flex gap-3">
               <Input value={portalName} onChange={(e) => setPortalName(e.target.value)} className="max-w-md" placeholder="e.g. University Application Portal" />
-              <Button onClick={() => save('portal_name', portalName)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['portal_name', portalName]], 'Portal Name')} pending={bulkMutation.isPending} />
             </div>
           </div>
 
@@ -1222,9 +1456,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('nav_links', JSON.stringify(navLinks))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Navigation'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['nav_links', JSON.stringify(navLinks)]], 'Navigation Links')} pending={bulkMutation.isPending} />
           </div>
 
           {/* CTA Buttons */}
@@ -1252,9 +1484,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('cta_buttons', JSON.stringify(ctaButtons))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Buttons'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['cta_buttons', JSON.stringify(ctaButtons)]], 'CTA Buttons')} pending={bulkMutation.isPending} />
           </div>
         </div>
       )}
@@ -1294,7 +1524,7 @@ function SiteSettingsPage() {
                     const formData = new FormData();
                     formData.append('file', file);
                     try {
-                      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+                      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
                       if (res.ok) {
                         const data = await res.json();
                         const url = data.url || data.fileUrl || '';
@@ -1310,9 +1540,6 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Logo Fallback Text</label>
                 <div className="flex gap-3">
                   <Input value={splashLogoText} onChange={(e) => setSplashLogoText(e.target.value)} className="max-w-md" placeholder="e.g. IU" />
-                  <Button onClick={() => save('splash_logo_text', splashLogoText)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
                 <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">Shown inside the circle when no logo image is uploaded.</p>
               </div>
@@ -1320,27 +1547,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Institute Name</label>
                 <div className="flex gap-3">
                   <Input value={splashName} onChange={(e) => setSplashName(e.target.value)} className="max-w-md" placeholder="e.g. Institute Uganda" />
-                  <Button onClick={() => save('splash_name', splashName)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Motto / Tagline</label>
                 <div className="flex gap-3">
                   <Input value={splashMotto} onChange={(e) => setSplashMotto(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Through Vocational Skills" />
-                  <Button onClick={() => save('splash_motto', splashMotto)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Loading Status Text</label>
                 <div className="flex gap-3">
                   <Input value={splashStatusText} onChange={(e) => setSplashStatusText(e.target.value)} className="max-w-md" placeholder="e.g. Preparing Experience" />
-                  <Button onClick={() => save('splash_status_text', splashStatusText)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['splash_logo_text', splashLogoText], ['splash_name', splashName], ['splash_motto', splashMotto], ['splash_status_text', splashStatusText]], 'Splash Screen')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -1362,9 +1581,7 @@ function SiteSettingsPage() {
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Small text with a heart icon above the main heading on the homepage hero section.</p>
         <div className="flex gap-3">
           <Input value={heroTagline} onChange={(e) => setHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Communities Since 2010" />
-          <Button onClick={() => save('hero_tagline', heroTagline)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
+          <SectionSave onClick={() => saveSection([['hero_tagline', heroTagline]], 'Hero Tagline')} pending={bulkMutation.isPending} />
         </div>
       </div>
 
@@ -1377,27 +1594,19 @@ function SiteSettingsPage() {
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 1</label>
             <div className="flex gap-3">
               <Input value={heroHeading1} onChange={(e) => setHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Empowering Single Mothers" />
-              <Button onClick={() => save('hero_heading_1', heroHeading1)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 2 <span className="text-accent font-normal">(accent color)</span></label>
             <div className="flex gap-3">
               <Input value={heroHeading2} onChange={(e) => setHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. & Vulnerable Youth" />
-              <Button onClick={() => save('hero_heading_2', heroHeading2)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Line 3</label>
             <div className="flex gap-3">
               <Input value={heroHeading3} onChange={(e) => setHeroHeading3(e.target.value)} className="max-w-md" placeholder="e.g. Through Practical Skills" />
-              <Button onClick={() => save('hero_heading_3', heroHeading3)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['hero_heading_1', heroHeading1], ['hero_heading_2', heroHeading2], ['hero_heading_3', heroHeading3]], 'Hero Headings')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -1409,9 +1618,7 @@ function SiteSettingsPage() {
         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The paragraph text below the main heading on the homepage hero section.</p>
         <textarea value={heroSubtitle} onChange={(e) => setHeroSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. We equip vulnerable youth and single mothers with vocational skills..." />
         <div className="mt-3">
-          <Button onClick={() => save('hero_subtitle', heroSubtitle)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
+          <SectionSave onClick={() => saveSection([['hero_subtitle', heroSubtitle]], 'Hero Subtitle')} pending={bulkMutation.isPending} />
         </div>
       </div>
 
@@ -1425,36 +1632,28 @@ function SiteSettingsPage() {
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
               <Input value={heroCtaDonate} onChange={(e) => setHeroCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
             </div>
-            <button onClick={() => { setHeroCtaDonateVisible(!heroCtaDonateVisible); save('hero_cta_donate_visible', String(!heroCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            <button onClick={() => setHeroCtaDonateVisible(!heroCtaDonateVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
               {heroCtaDonateVisible ? 'Visible' : 'Hidden'}
             </button>
-            <Button className="mt-5" onClick={() => save('hero_cta_donate', heroCtaDonate)} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-            </Button>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 max-w-md">
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
               <Input value={heroCtaSponsor} onChange={(e) => setHeroCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
             </div>
-            <button onClick={() => { setHeroCtaSponsorVisible(!heroCtaSponsorVisible); save('hero_cta_sponsor_visible', String(!heroCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            <button onClick={() => setHeroCtaSponsorVisible(!heroCtaSponsorVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
               {heroCtaSponsorVisible ? 'Visible' : 'Hidden'}
             </button>
-            <Button className="mt-5" onClick={() => save('hero_cta_sponsor', heroCtaSponsor)} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-            </Button>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 max-w-md">
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Text Button (with arrow icon)</label>
               <Input value={heroCtaLearnMore} onChange={(e) => setHeroCtaLearnMore(e.target.value)} placeholder="e.g. Learn More" />
             </div>
-            <button onClick={() => { setHeroCtaLearnMoreVisible(!heroCtaLearnMoreVisible); save('hero_cta_learn_more_visible', String(!heroCtaLearnMoreVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaLearnMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            <button onClick={() => setHeroCtaLearnMoreVisible(!heroCtaLearnMoreVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${heroCtaLearnMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
               {heroCtaLearnMoreVisible ? 'Visible' : 'Hidden'}
             </button>
-            <Button className="mt-5" onClick={() => save('hero_cta_learn_more', heroCtaLearnMore)} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['hero_cta_donate_visible', String(heroCtaDonateVisible)], ['hero_cta_sponsor_visible', String(heroCtaSponsorVisible)], ['hero_cta_learn_more_visible', String(heroCtaLearnMoreVisible)], ['hero_cta_donate', heroCtaDonate], ['hero_cta_sponsor', heroCtaSponsor], ['hero_cta_learn_more', heroCtaLearnMore]], 'Hero Buttons')} pending={bulkMutation.isPending} />
           </div>
         </div>
       </div>
@@ -1477,9 +1676,7 @@ function SiteSettingsPage() {
             </div>
           ))}
         </div>
-        <Button className="mt-4" onClick={() => save('hero_stats', JSON.stringify(heroStats))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
-        </Button>
+        <SectionSave onClick={() => saveSection([['hero_stats', JSON.stringify(heroStats)]], 'Hero Stats')} pending={bulkMutation.isPending} />
       </div>
 
       {/* Programs Section */}
@@ -1491,36 +1688,25 @@ function SiteSettingsPage() {
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
             <div className="flex gap-3">
               <Input value={whatWeTeachTagline} onChange={(e) => setWhatWeTeachTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
-              <Button onClick={() => save('what_we_teach_tagline', whatWeTeachTagline)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
             <div className="flex gap-3">
               <Input value={whatWeTeachHeading1} onChange={(e) => setWhatWeTeachHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Practical Skills That" />
-              <Button onClick={() => save('what_we_teach_heading_1', whatWeTeachHeading1)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
             <div className="flex gap-3">
               <Input value={whatWeTeachHeading2} onChange={(e) => setWhatWeTeachHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Create Real Livelihoods" />
-              <Button onClick={() => save('what_we_teach_heading_2', whatWeTeachHeading2)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
             <textarea value={whatWeTeachSubtitle} onChange={(e) => setWhatWeTeachSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Our vocational programs are designed for immediate employment..." />
             <div className="mt-2">
-              <Button onClick={() => save('what_we_teach_subtitle', whatWeTeachSubtitle)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['what_we_teach_tagline', whatWeTeachTagline], ['what_we_teach_heading_1', whatWeTeachHeading1], ['what_we_teach_heading_2', whatWeTeachHeading2], ['what_we_teach_subtitle', whatWeTeachSubtitle]], 'Programs Section')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -1545,9 +1731,7 @@ function SiteSettingsPage() {
             </div>
           ))}
         </div>
-        <Button className="mt-4" onClick={() => save('what_we_teach_programs', JSON.stringify(whatWeTeachPrograms))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Programs'}
-        </Button>
+        <SectionSave onClick={() => saveSection([['what_we_teach_programs', JSON.stringify(whatWeTeachPrograms)]], 'Program Cards')} pending={bulkMutation.isPending} />
       </div>
 
       {/* Programs Section Button */}
@@ -1558,12 +1742,10 @@ function SiteSettingsPage() {
           <div className="flex-1 max-w-md">
             <Input value={whatWeTeachBtnText} onChange={(e) => setWhatWeTeachBtnText(e.target.value)} placeholder="e.g. View All Programs" />
           </div>
-          <button onClick={() => { setWhatWeTeachBtnVisible(!whatWeTeachBtnVisible); save('what_we_teach_btn_visible', String(!whatWeTeachBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${whatWeTeachBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+          <button onClick={() => setWhatWeTeachBtnVisible(!whatWeTeachBtnVisible)} className={`px-3 py-2 rounded-lg text-xs font-medium border ${whatWeTeachBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
             {whatWeTeachBtnVisible ? 'Visible' : 'Hidden'}
           </button>
-          <Button onClick={() => save('what_we_teach_btn_text', whatWeTeachBtnText)} disabled={updateMutation.isPending}>
-            {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-          </Button>
+          <SectionSave onClick={() => saveSection([['what_we_teach_btn_visible', String(whatWeTeachBtnVisible)], ['what_we_teach_btn_text', whatWeTeachBtnText]], 'Programs Section Button')} pending={bulkMutation.isPending} />
         </div>
       </div>
 
@@ -1576,57 +1758,40 @@ function SiteSettingsPage() {
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
             <div className="flex gap-3">
               <Input value={successStoryTagline} onChange={(e) => setSuccessStoryTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Success Story" />
-              <Button onClick={() => save('success_story_tagline', successStoryTagline)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Quote</label>
             <textarea value={successStoryQuote} onChange={(e) => setSuccessStoryQuote(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder='e.g. I went from nothing to owning my own business.' />
             <div className="mt-2">
-              <Button onClick={() => save('success_story_quote', successStoryQuote)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Author Name</label>
             <div className="flex gap-3">
               <Input value={successStoryAuthor} onChange={(e) => setSuccessStoryAuthor(e.target.value)} className="max-w-md" placeholder="e.g. Mary Nakato" />
-              <Button onClick={() => save('success_story_author', successStoryAuthor)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Program</label>
             <div className="flex gap-3">
               <Input value={successStoryProgram} onChange={(e) => setSuccessStoryProgram(e.target.value)} className="max-w-md" placeholder="e.g. Tailoring & Design" />
-              <Button onClick={() => save('success_story_program', successStoryProgram)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Outcome (green text)</label>
             <div className="flex gap-3">
               <Input value={successStoryOutcome} onChange={(e) => setSuccessStoryOutcome(e.target.value)} className="max-w-md" placeholder="e.g. Now runs a successful tailoring shop" />
-              <Button onClick={() => save('success_story_outcome', successStoryOutcome)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button</label>
             <div className="flex items-center gap-3">
               <Input value={successStoryBtnText} onChange={(e) => setSuccessStoryBtnText(e.target.value)} className="max-w-md" placeholder="e.g. Read More Stories" />
-              <button onClick={() => { setSuccessStoryBtnVisible(!successStoryBtnVisible); save('success_story_btn_visible', String(!successStoryBtnVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${successStoryBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+              <button onClick={() => setSuccessStoryBtnVisible(!successStoryBtnVisible)} className={`px-3 py-2 rounded-lg text-xs font-medium border ${successStoryBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                 {successStoryBtnVisible ? 'Visible' : 'Hidden'}
               </button>
-              <Button onClick={() => save('success_story_btn_text', successStoryBtnText)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['success_story_btn_visible', String(successStoryBtnVisible)], ['success_story_tagline', successStoryTagline], ['success_story_quote', successStoryQuote], ['success_story_author', successStoryAuthor], ['success_story_program', successStoryProgram], ['success_story_outcome', successStoryOutcome], ['success_story_btn_text', successStoryBtnText]], 'Success Story Section')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -1650,9 +1815,7 @@ function SiteSettingsPage() {
             </div>
           ))}
         </div>
-        <Button className="mt-4" onClick={() => save('success_story_stats', JSON.stringify(successStoryStats))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
-        </Button>
+        <SectionSave onClick={() => saveSection([['success_story_stats', JSON.stringify(successStoryStats)]], 'Success Story Stats')} pending={bulkMutation.isPending} />
       </div>
 
       {/* Donate Section */}
@@ -1664,36 +1827,25 @@ function SiteSettingsPage() {
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
             <div className="flex gap-3">
               <Input value={donateTagline} onChange={(e) => setDonateTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
-              <Button onClick={() => save('donate_tagline', donateTagline)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
             <div className="flex gap-3">
               <Input value={donateHeading1} onChange={(e) => setDonateHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Support Changes" />
-              <Button onClick={() => save('donate_heading_1', donateHeading1)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
             <div className="flex gap-3">
               <Input value={donateHeading2} onChange={(e) => setDonateHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Life" />
-              <Button onClick={() => save('donate_heading_2', donateHeading2)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
             </div>
           </div>
           <div>
             <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Subtitle</label>
             <textarea value={donateSubtitle} onChange={(e) => setDonateSubtitle(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. Every contribution — large or small..." />
             <div className="mt-2">
-              <Button onClick={() => save('donate_subtitle', donateSubtitle)} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['donate_tagline', donateTagline], ['donate_heading_1', donateHeading1], ['donate_heading_2', donateHeading2], ['donate_subtitle', donateSubtitle]], 'Donate Section')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -1717,9 +1869,7 @@ function SiteSettingsPage() {
             </div>
           ))}
         </div>
-        <Button className="mt-4" onClick={() => save('donate_tiers', JSON.stringify(donateTiers))} disabled={updateMutation.isPending}>
-          {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
-        </Button>
+        <SectionSave onClick={() => saveSection([['donate_tiers', JSON.stringify(donateTiers)]], 'Donation Tiers')} pending={bulkMutation.isPending} />
       </div>
 
       {/* Donate Section Buttons */}
@@ -1732,24 +1882,19 @@ function SiteSettingsPage() {
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Primary Button (filled, with heart icon)</label>
               <Input value={donateCtaDonate} onChange={(e) => setDonateCtaDonate(e.target.value)} placeholder="e.g. Donate Now" />
             </div>
-            <button onClick={() => { setDonateCtaDonateVisible(!donateCtaDonateVisible); save('donate_cta_donate_visible', String(!donateCtaDonateVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            <button onClick={() => setDonateCtaDonateVisible(!donateCtaDonateVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaDonateVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
               {donateCtaDonateVisible ? 'Visible' : 'Hidden'}
             </button>
-            <Button className="mt-5" onClick={() => save('donate_cta_donate', donateCtaDonate)} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-            </Button>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex-1 max-w-md">
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Secondary Button (outlined, with users icon)</label>
               <Input value={donateCtaSponsor} onChange={(e) => setDonateCtaSponsor(e.target.value)} placeholder="e.g. Sponsor a Student" />
             </div>
-            <button onClick={() => { setDonateCtaSponsorVisible(!donateCtaSponsorVisible); save('donate_cta_sponsor_visible', String(!donateCtaSponsorVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+            <button onClick={() => setDonateCtaSponsorVisible(!donateCtaSponsorVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateCtaSponsorVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
               {donateCtaSponsorVisible ? 'Visible' : 'Hidden'}
             </button>
-            <Button className="mt-5" onClick={() => save('donate_cta_sponsor', donateCtaSponsor)} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['donate_cta_donate_visible', String(donateCtaDonateVisible)], ['donate_cta_sponsor_visible', String(donateCtaSponsorVisible)], ['donate_cta_donate', donateCtaDonate], ['donate_cta_sponsor', donateCtaSponsor]], 'Donate Section Buttons')} pending={bulkMutation.isPending} />
           </div>
         </div>
       </div>
@@ -1864,32 +2009,7 @@ function SiteSettingsPage() {
             </div>
 
             <div className="mt-5 flex gap-3">
-              <Button
-                onClick={async () => {
-                  await save('about_story_label', aboutStoryLabel);
-                  await save('about_story_heading_1', aboutStoryHeading1);
-                  await save('about_story_heading_2', aboutStoryHeading2);
-                  await save('about_story_paragraph', aboutStoryParagraph);
-                  await save('about_founding_label', aboutFoundingLabel);
-                  await save('about_founding_heading', aboutFoundingHeading);
-                  await save('about_founding_story', aboutFoundingStory);
-                  await save('about_mission_label', aboutMissionLabel);
-                  await save('about_mission_text', aboutMissionText);
-                  await save('about_vision_label', aboutVisionLabel);
-                  await save('about_vision_text', aboutVisionText);
-                  await save('about_values_label', aboutValuesLabel);
-                  await save('about_values_heading', aboutValuesHeading);
-                  await save('about_programs_btn', aboutProgramsBtn);
-                  await save('about_values', JSON.stringify(aboutValues));
-                  await save('about_cta_label', aboutCtaLabel);
-                  await save('about_cta_heading', aboutCtaHeading);
-                  await save('about_cta_donate_btn', aboutCtaDonateBtn);
-                  await save('about_cta_partner_btn', aboutCtaPartnerBtn);
-                }}
-                disabled={updateMutation.isPending}
-              >
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Changes'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['about_story_label', aboutStoryLabel], ['about_story_heading_1', aboutStoryHeading1], ['about_story_heading_2', aboutStoryHeading2], ['about_story_paragraph', aboutStoryParagraph], ['about_founding_label', aboutFoundingLabel], ['about_founding_heading', aboutFoundingHeading], ['about_founding_story', aboutFoundingStory], ['about_mission_label', aboutMissionLabel], ['about_mission_text', aboutMissionText], ['about_vision_label', aboutVisionLabel], ['about_vision_text', aboutVisionText], ['about_values_label', aboutValuesLabel], ['about_values_heading', aboutValuesHeading], ['about_programs_btn', aboutProgramsBtn], ['about_values', JSON.stringify(aboutValues)], ['about_cta_label', aboutCtaLabel], ['about_cta_heading', aboutCtaHeading], ['about_cta_donate_btn', aboutCtaDonateBtn], ['about_cta_partner_btn', aboutCtaPartnerBtn]], 'About Section')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -1913,27 +2033,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
                 <div className="flex gap-3">
                   <Input value={newsHeroTagline} onChange={(e) => setNewsHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. News & Events" />
-                  <Button onClick={() => save('news_hero_tagline', newsHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={newsHeroHeading1} onChange={(e) => setNewsHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Stories That" />
-                  <Button onClick={() => save('news_hero_heading_1', newsHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={newsHeroHeading2} onChange={(e) => setNewsHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Inspire" />
-                  <Button onClick={() => save('news_hero_heading_2', newsHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['news_hero_tagline', newsHeroTagline], ['news_hero_heading_1', newsHeroHeading1], ['news_hero_heading_2', newsHeroHeading2]], 'News Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -1948,18 +2060,13 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline (small uppercase text)</label>
                 <div className="flex gap-3">
                   <Input value={newsEventsTagline} onChange={(e) => setNewsEventsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Upcoming Events" />
-                  <Button onClick={() => save('news_events_tagline', newsEventsTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={newsEventsHeading} onChange={(e) => setNewsEventsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Mark Your Calendar" />
-                  <Button onClick={() => save('news_events_heading', newsEventsHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['news_events_tagline', newsEventsTagline], ['news_events_heading', newsEventsHeading]], 'Events Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -1989,9 +2096,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('news_articles', JSON.stringify(newsArticles))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Articles'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['news_articles', JSON.stringify(newsArticles)]], 'News Grid Articles')} pending={bulkMutation.isPending} />
           </div>
 
           {/* Featured Article Section */}
@@ -2003,39 +2108,28 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Category Badge</label>
                 <div className="flex gap-3">
                   <Input value={newsFeaturedCategory} onChange={(e) => setNewsFeaturedCategory(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
-                  <Button onClick={() => save('news_featured_category', newsFeaturedCategory)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Title</label>
                 <div className="flex gap-3">
                   <Input value={newsFeaturedTitle} onChange={(e) => setNewsFeaturedTitle(e.target.value)} className="max-w-md" placeholder="e.g. Partnership with MIT Launches Joint Research Program" />
-                  <Button onClick={() => save('news_featured_title', newsFeaturedTitle)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Excerpt</label>
                 <textarea value={newsFeaturedExcerpt} onChange={(e) => setNewsFeaturedExcerpt(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. A five-year collaboration will support quantum computing research..." />
                 <div className="mt-2">
-                  <Button onClick={() => save('news_featured_excerpt', newsFeaturedExcerpt)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Read More Link Text</label>
                 <div className="flex items-center gap-3">
                   <Input value={newsReadMore} onChange={(e) => setNewsReadMore(e.target.value)} className="max-w-md" placeholder="e.g. Read Full Story" />
-                  <button onClick={() => { setNewsReadMoreVisible(!newsReadMoreVisible); save('news_read_more_visible', String(!newsReadMoreVisible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${newsReadMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                  <button onClick={() => setNewsReadMoreVisible(!newsReadMoreVisible)} className={`px-3 py-2 rounded-lg text-xs font-medium border ${newsReadMoreVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {newsReadMoreVisible ? 'Visible' : 'Hidden'}
                   </button>
-                  <Button onClick={() => save('news_read_more', newsReadMore)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['news_read_more_visible', String(newsReadMoreVisible)], ['news_featured_category', newsFeaturedCategory], ['news_featured_title', newsFeaturedTitle], ['news_featured_excerpt', newsFeaturedExcerpt], ['news_read_more', newsReadMore]], 'Featured Article')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2070,9 +2164,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('news_events', JSON.stringify(settingEvents))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Events'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['news_events', JSON.stringify(settingEvents)]], 'Events List')} pending={bulkMutation.isPending} />
           </div>
         </div>
       )}
@@ -2095,36 +2187,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={progHeroTagline} onChange={(e) => setProgHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. What We Teach" />
-                  <Button onClick={() => save('programs_hero_tagline', progHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={progHeroHeading1} onChange={(e) => setProgHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Vocational Programs" />
-                  <Button onClick={() => save('programs_hero_heading_1', progHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={progHeroHeading2} onChange={(e) => setProgHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. That Build Real Futures" />
-                  <Button onClick={() => save('programs_hero_heading_2', progHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={progHeroDescription} onChange={(e) => setProgHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. 8 practical programs. Market-driven curricula..." />
-                  <Button onClick={() => save('programs_hero_description', progHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['programs_hero_tagline', progHeroTagline], ['programs_hero_heading_1', progHeroHeading1], ['programs_hero_heading_2', progHeroHeading2], ['programs_hero_description', progHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2139,27 +2220,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={progSectionTagline} onChange={(e) => setProgSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Programs" />
-                  <Button onClick={() => save('programs_section_tagline', progSectionTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={progSectionHeading} onChange={(e) => setProgSectionHeading(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Path" />
-                  <Button onClick={() => save('programs_section_heading', progSectionHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={progSectionDescription} onChange={(e) => setProgSectionDescription(e.target.value)} className="max-w-md" placeholder="e.g. Click on any program to see skills..." />
-                  <Button onClick={() => save('programs_section_description', progSectionDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['programs_section_tagline', progSectionTagline], ['programs_section_heading', progSectionHeading], ['programs_section_description', progSectionDescription]], 'Programs Grid Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2185,36 +2258,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={storiesHeroTagline} onChange={(e) => setStoriesHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Student Stories" />
-                  <Button onClick={() => save('stories_hero_tagline', storiesHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={storiesHeroHeading1} onChange={(e) => setStoriesHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Real People." />
-                  <Button onClick={() => save('stories_hero_heading_1', storiesHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={storiesHeroHeading2} onChange={(e) => setStoriesHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation." />
-                  <Button onClick={() => save('stories_hero_heading_2', storiesHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={storiesHeroDescription} onChange={(e) => setStoriesHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a person..." />
-                  <Button onClick={() => save('stories_hero_description', storiesHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['stories_hero_tagline', storiesHeroTagline], ['stories_hero_heading_1', storiesHeroHeading1], ['stories_hero_heading_2', storiesHeroHeading2], ['stories_hero_description', storiesHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2229,27 +2291,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={storiesSectionTagline} onChange={(e) => setStoriesSectionTagline(e.target.value)} className="max-w-md" placeholder="e.g. Their Journeys" />
-                  <Button onClick={() => save('stories_section_tagline', storiesSectionTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={storiesSectionHeading1} onChange={(e) => setStoriesSectionHeading1(e.target.value)} className="max-w-md" placeholder="e.g. From Hardship" />
-                  <Button onClick={() => save('stories_section_heading_1', storiesSectionHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={storiesSectionHeading2} onChange={(e) => setStoriesSectionHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Hope" />
-                  <Button onClick={() => save('stories_section_heading_2', storiesSectionHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['stories_section_tagline', storiesSectionTagline], ['stories_section_heading_1', storiesSectionHeading1], ['stories_section_heading_2', storiesSectionHeading2]], 'Stories Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2264,36 +2318,24 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={storiesCtaTagline} onChange={(e) => setStoriesCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Be Part of the Story" />
-                  <Button onClick={() => save('stories_cta_tagline', storiesCtaTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={storiesCtaHeading1} onChange={(e) => setStoriesCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next" />
-                  <Button onClick={() => save('stories_cta_heading_1', storiesCtaHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={storiesCtaHeading2} onChange={(e) => setStoriesCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Success Story" />
-                  <Button onClick={() => save('stories_cta_heading_2', storiesCtaHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={storiesCtaDescription} onChange={(e) => setStoriesCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Every student who walks through our doors..." />
-                  <Button onClick={() => save('stories_cta_description', storiesCtaDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -2301,7 +2343,7 @@ function SiteSettingsPage() {
                   <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
                   <div className="flex gap-3">
                     <Input value={storiesCtaBtn1Text} onChange={(e) => setStoriesCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
-                    <button onClick={() => { setStoriesCtaBtn1Visible(!storiesCtaBtn1Visible); save('stories_cta_btn1_visible', String(!storiesCtaBtn1Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    <button onClick={() => setStoriesCtaBtn1Visible(!storiesCtaBtn1Visible)} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                       {storiesCtaBtn1Visible ? 'Visible' : 'Hidden'}
                     </button>
                   </div>
@@ -2310,23 +2352,14 @@ function SiteSettingsPage() {
                   <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
                   <div className="flex gap-3">
                     <Input value={storiesCtaBtn2Text} onChange={(e) => setStoriesCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. View Programs" />
-                    <button onClick={() => { setStoriesCtaBtn2Visible(!storiesCtaBtn2Visible); save('stories_cta_btn2_visible', String(!storiesCtaBtn2Visible)); }} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                    <button onClick={() => setStoriesCtaBtn2Visible(!storiesCtaBtn2Visible)} className={`px-3 py-2 rounded-lg text-xs font-medium border ${storiesCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                       {storiesCtaBtn2Visible ? 'Visible' : 'Hidden'}
                     </button>
                   </div>
                 </div>
               </div>
               <div>
-                <Button onClick={() => {
-                  save('stories_cta_tagline', storiesCtaTagline);
-                  save('stories_cta_heading_1', storiesCtaHeading1);
-                  save('stories_cta_heading_2', storiesCtaHeading2);
-                  save('stories_cta_description', storiesCtaDescription);
-                  save('stories_cta_btn1_text', storiesCtaBtn1Text);
-                  save('stories_cta_btn2_text', storiesCtaBtn2Text);
-                }} disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save CTA'}
-                </Button>
+                <SectionSave onClick={() => saveSection([['stories_cta_btn1_visible', String(storiesCtaBtn1Visible)], ['stories_cta_btn2_visible', String(storiesCtaBtn2Visible)], ['stories_cta_tagline', storiesCtaTagline], ['stories_cta_heading_1', storiesCtaHeading1], ['stories_cta_heading_2', storiesCtaHeading2], ['stories_cta_description', storiesCtaDescription], ['stories_cta_btn1_text', storiesCtaBtn1Text], ['stories_cta_btn2_text', storiesCtaBtn2Text]], 'Call to Action')} pending={bulkMutation.isPending} />
               </div>
             </div>
           </div>
@@ -2358,36 +2391,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
-                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
-                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
-                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof..." />
-                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['impact_hero_tagline', impactHeroTagline], ['impact_hero_heading_1', impactHeroHeading1], ['impact_hero_heading_2', impactHeroHeading2], ['impact_hero_description', impactHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2402,18 +2424,12 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
-                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
-                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
@@ -2429,7 +2445,7 @@ function SiteSettingsPage() {
                   ))}
                   <div className="flex gap-3">
                     <button onClick={() => setImpactStats([...impactStats, {value: 0, suffix: '', label: ''}])} className="text-xs text-blue-600 hover:underline">+ Add Stat</button>
-                    <button onClick={() => save('impact_stats', JSON.stringify(impactStats))} className="text-xs text-green-600 hover:underline font-medium">Save Stats</button>
+                    <SectionSave onClick={() => saveSection([['impact_stats_tagline', impactStatsTagline], ['impact_stats_heading', impactStatsHeading], ['impact_stats', JSON.stringify(impactStats)]], 'Stats Section')} pending={bulkMutation.isPending} />
                   </div>
                 </div>
               </div>
@@ -2445,27 +2461,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
-                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
-                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic..." />
-                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['impact_stories_tagline', impactStoriesTagline], ['impact_stories_heading', impactStoriesHeading], ['impact_stories_description', impactStoriesDescription]], 'Stories Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2480,25 +2488,20 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
-                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
-                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['impact_cta_btn1_visible', String(impactCtaBtn1Visible)], ['impact_cta_btn2_visible', String(impactCtaBtn2Visible)], ['impact_cta_btn1_text', impactCtaBtn1Text], ['impact_cta_btn2_text', impactCtaBtn2Text], ['impact_cta_heading', impactCtaHeading], ['impact_cta_description', impactCtaDescription]], 'Call to Action')} pending={bulkMutation.isPending} />
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 1 Text</label>
                 <div className="flex gap-3">
-                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} onBlur={() => save('impact_cta_btn1_text', impactCtaBtn1Text)} className="max-w-md" placeholder="e.g. Donate Now" />
-                  <button onClick={() => { setImpactCtaBtn1Visible(!impactCtaBtn1Visible); save('impact_cta_btn1_visible', String(!impactCtaBtn1Visible)); }}
+                  <Input value={impactCtaBtn1Text} onChange={(e) => setImpactCtaBtn1Text(e.target.value)} className="max-w-md" placeholder="e.g. Donate Now" />
+                  <button onClick={() => setImpactCtaBtn1Visible(!impactCtaBtn1Visible)}
                     className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn1Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {impactCtaBtn1Visible ? 'Visible' : 'Hidden'}
                   </button>
@@ -2507,8 +2510,8 @@ function SiteSettingsPage() {
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button 2 Text</label>
                 <div className="flex gap-3">
-                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} onBlur={() => save('impact_cta_btn2_text', impactCtaBtn2Text)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
-                  <button onClick={() => { setImpactCtaBtn2Visible(!impactCtaBtn2Visible); save('impact_cta_btn2_visible', String(!impactCtaBtn2Visible)); }}
+                  <Input value={impactCtaBtn2Text} onChange={(e) => setImpactCtaBtn2Text(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student" />
+                  <button onClick={() => setImpactCtaBtn2Visible(!impactCtaBtn2Visible)}
                     className={`px-3 py-2 rounded-lg text-xs font-medium border ${impactCtaBtn2Visible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {impactCtaBtn2Visible ? 'Visible' : 'Hidden'}
                   </button>
@@ -2531,36 +2534,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={galleryHeroTagline} onChange={(e) => setGalleryHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Photo Gallery" />
-                  <Button onClick={() => save('gallery_hero_tagline', galleryHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={galleryHeroHeading1} onChange={(e) => setGalleryHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. See the Impact" />
-                  <Button onClick={() => save('gallery_hero_heading_1', galleryHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={galleryHeroHeading2} onChange={(e) => setGalleryHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. In Action" />
-                  <Button onClick={() => save('gallery_hero_heading_2', galleryHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={galleryHeroDescription} onChange={(e) => setGalleryHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Photos from our training sessions..." />
-                  <Button onClick={() => save('gallery_hero_description', galleryHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['gallery_hero_tagline', galleryHeroTagline], ['gallery_hero_heading_1', galleryHeroHeading1], ['gallery_hero_heading_2', galleryHeroHeading2], ['gallery_hero_description', galleryHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2571,162 +2563,6 @@ function SiteSettingsPage() {
             <h2 className="nexus-serif text-lg font-semibold mb-1">Photo Gallery</h2>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Add, edit, or remove photos displayed on the Gallery page.</p>
             <PhotoGalleryManager />
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════ IMPACT TAB ═══════════════════ */}
-      {activeTab === 'impact' && (
-        <div className="space-y-8 pt-4">
-          {/* Hero Section */}
-          <div className="nexus-card rounded-2xl border p-6">
-            <h2 className="nexus-serif text-lg font-semibold mb-1">Hero Section</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The top banner of the Impact page.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
-                <div className="flex gap-3">
-                  <Input value={impactHeroTagline} onChange={(e) => setImpactHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Real Transformation" />
-                  <Button onClick={() => save('impact_hero_tagline', impactHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
-                <div className="flex gap-3">
-                  <Input value={impactHeroHeading1} onChange={(e) => setImpactHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Lives Changed." />
-                  <Button onClick={() => save('impact_hero_heading_1', impactHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
-                <div className="flex gap-3">
-                  <Input value={impactHeroHeading2} onChange={(e) => setImpactHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Communities Transformed." />
-                  <Button onClick={() => save('impact_hero_heading_2', impactHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
-                <div className="flex gap-3">
-                  <Input value={impactHeroDescription} onChange={(e) => setImpactHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our graduates are proof that practical skills..." />
-                  <Button onClick={() => save('impact_hero_description', impactHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stats Section */}
-          <div className="nexus-card rounded-2xl border p-6">
-            <h2 className="nexus-serif text-lg font-semibold mb-1">Impact Stats</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The numbered stats displayed on the Impact page.</p>
-            <div className="space-y-4 mb-4">
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
-                <div className="flex gap-3">
-                  <Input value={impactStatsTagline} onChange={(e) => setImpactStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. By The Numbers" />
-                  <Button onClick={() => save('impact_stats_tagline', impactStatsTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
-                <div className="flex gap-3">
-                  <Input value={impactStatsHeading} onChange={(e) => setImpactStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Our Impact In Numbers" />
-                  <Button onClick={() => save('impact_stats_heading', impactStatsHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-sm font-semibold">Stats</h3>
-              <Button variant="outline" size="sm" onClick={() => setImpactStats([...impactStats, { value: 0, suffix: '', label: '' }])}>
-                + Add Stat
-              </Button>
-            </div>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Each stat shows an animated count-up on the Impact page.</p>
-            <div className="space-y-3">
-              {impactStats.map((stat, i) => (
-                <div key={i} className="grid grid-cols-[1fr_100px_1fr_auto] gap-3 items-center">
-                  <Input type="number" value={stat.value} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], value: Number(e.target.value) || 0 }; setImpactStats(next); }} placeholder="e.g. 1200" />
-                  <Input value={stat.suffix} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], suffix: e.target.value }; setImpactStats(next); }} placeholder="+  %" />
-                  <Input value={stat.label} onChange={(e) => { const next = [...impactStats]; next[i] = { ...next[i], label: e.target.value }; setImpactStats(next); }} placeholder="e.g. Total Graduates" />
-                  <button onClick={() => setImpactStats(impactStats.filter((_, j) => j !== i))} className="text-[hsl(var(--destructive))] text-xs">Remove</button>
-                </div>
-              ))}
-            </div>
-            <Button className="mt-4" onClick={() => save('impact_stats', JSON.stringify(impactStats))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
-            </Button>
-          </div>
-
-          {/* Stories Section */}
-          <div className="nexus-card rounded-2xl border p-6">
-            <h2 className="nexus-serif text-lg font-semibold mb-1">Graduate Stories Section</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">Heading and intro text above the graduate story cards on the Impact page.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
-                <div className="flex gap-3">
-                  <Input value={impactStoriesTagline} onChange={(e) => setImpactStoriesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Graduate Stories" />
-                  <Button onClick={() => save('impact_stories_tagline', impactStoriesTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
-                <div className="flex gap-3">
-                  <Input value={impactStoriesHeading} onChange={(e) => setImpactStoriesHeading(e.target.value)} className="max-w-md" placeholder="e.g. Meet Our Graduates" />
-                  <Button onClick={() => save('impact_stories_heading', impactStoriesHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
-                <div className="flex gap-3">
-                  <Input value={impactStoriesDescription} onChange={(e) => setImpactStoriesDescription(e.target.value)} className="max-w-md" placeholder="e.g. Behind every statistic is a real person..." />
-                  <Button onClick={() => save('impact_stories_description', impactStoriesDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* CTA Section */}
-          <div className="nexus-card rounded-2xl border p-6">
-            <h2 className="nexus-serif text-lg font-semibold mb-1">Call To Action</h2>
-            <p className="text-xs text-[hsl(var(--muted-foreground))] mb-4">The donation call-to-action banner at the bottom of the Impact page.</p>
-            <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
-                <div className="flex gap-3">
-                  <Input value={impactCtaHeading} onChange={(e) => setImpactCtaHeading(e.target.value)} className="max-w-md" placeholder="e.g. Help Write the Next Success Story" />
-                  <Button onClick={() => save('impact_cta_heading', impactCtaHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
-                <div className="flex gap-3">
-                  <Input value={impactCtaDescription} onChange={(e) => setImpactCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Your donation directly funds..." />
-                  <Button onClick={() => save('impact_cta_description', impactCtaDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -2749,36 +2585,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={partnersHeroTagline} onChange={(e) => setPartnersHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Partnerships" />
-                  <Button onClick={() => save('partners_hero_tagline', partnersHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={partnersHeroHeading1} onChange={(e) => setPartnersHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Together We Build" />
-                  <Button onClick={() => save('partners_hero_heading_1', partnersHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={partnersHeroHeading2} onChange={(e) => setPartnersHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Stronger Futures" />
-                  <Button onClick={() => save('partners_hero_heading_2', partnersHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={partnersHeroDescription} onChange={(e) => setPartnersHeroDescription(e.target.value)} className="max-w-md" placeholder="e.g. Our partners make transformation possible..." />
-                  <Button onClick={() => save('partners_hero_description', partnersHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['partners_hero_tagline', partnersHeroTagline], ['partners_hero_heading_1', partnersHeroHeading1], ['partners_hero_heading_2', partnersHeroHeading2], ['partners_hero_description', partnersHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2793,27 +2618,18 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
                 <div className="flex gap-3">
                   <Input value={partnersTypesTagline} onChange={(e) => setPartnersTypesTagline(e.target.value)} className="max-w-md" placeholder="e.g. Ways to Partner" />
-                  <Button onClick={() => save('partners_types_tagline', partnersTypesTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={partnersTypesHeading1} onChange={(e) => setPartnersTypesHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Find Your Way" />
-                  <Button onClick={() => save('partners_types_heading_1', partnersTypesHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={partnersTypesHeading2} onChange={(e) => setPartnersTypesHeading2(e.target.value)} className="max-w-md" placeholder="e.g. To Make an Impact" />
-                  <Button onClick={() => save('partners_types_heading_2', partnersTypesHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
             </div>
@@ -2846,9 +2662,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('partners_partner_types', JSON.stringify(partnerTypes))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Partner Types'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['partners_types_tagline', partnersTypesTagline], ['partners_types_heading_1', partnersTypesHeading1], ['partners_types_heading_2', partnersTypesHeading2], ['partners_partner_types', JSON.stringify(partnerTypes)]], 'Ways to Partner Section')} pending={bulkMutation.isPending} />
           </div>
 
           {/* Current Partners Section */}
@@ -2860,27 +2674,18 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Tagline</label>
                 <div className="flex gap-3">
                   <Input value={partnersStatsTagline} onChange={(e) => setPartnersStatsTagline(e.target.value)} className="max-w-md" placeholder="e.g. Our Network" />
-                  <Button onClick={() => save('partners_stats_tagline', partnersStatsTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Heading</label>
                 <div className="flex gap-3">
                   <Input value={partnersStatsHeading} onChange={(e) => setPartnersStatsHeading(e.target.value)} className="max-w-md" placeholder="e.g. Current Partners" />
-                  <Button onClick={() => save('partners_stats_heading', partnersStatsHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Section Description</label>
                 <div className="flex gap-3">
                   <Input value={partnersStatsDescription} onChange={(e) => setPartnersStatsDescription(e.target.value)} className="max-w-md" placeholder="e.g. We are grateful to work with..." />
-                  <Button onClick={() => save('partners_stats_description', partnersStatsDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
             </div>
@@ -2900,9 +2705,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('partners_stats', JSON.stringify(partnersStats))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Stats'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['partners_stats_tagline', partnersStatsTagline], ['partners_stats_heading', partnersStatsHeading], ['partners_stats_description', partnersStatsDescription], ['partners_stats', JSON.stringify(partnersStats)]], 'Current Partners Section')} pending={bulkMutation.isPending} />
           </div>
 
           {/* CTA Section */}
@@ -2914,36 +2717,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={partnersCtaTagline} onChange={(e) => setPartnersCtaTagline(e.target.value)} className="max-w-md" placeholder="e.g. Become a Partner" />
-                  <Button onClick={() => save('partners_cta_tagline', partnersCtaTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={partnersCtaHeading1} onChange={(e) => setPartnersCtaHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Ready to Change Lives" />
-                  <Button onClick={() => save('partners_cta_heading_1', partnersCtaHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={partnersCtaHeading2} onChange={(e) => setPartnersCtaHeading2(e.target.value)} className="max-w-md" placeholder="e.g. Together?" />
-                  <Button onClick={() => save('partners_cta_heading_2', partnersCtaHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <div className="flex gap-3">
                   <Input value={partnersCtaDescription} onChange={(e) => setPartnersCtaDescription(e.target.value)} className="max-w-md" placeholder="e.g. Whether you represent a corporation, an NGO..." />
-                  <Button onClick={() => save('partners_cta_description', partnersCtaDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['partners_cta_tagline', partnersCtaTagline], ['partners_cta_heading_1', partnersCtaHeading1], ['partners_cta_heading_2', partnersCtaHeading2], ['partners_cta_description', partnersCtaDescription]], 'Call To Action')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -2976,36 +2768,25 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={donateHeroTagline} onChange={(e) => setDonateHeroTagline(e.target.value)} className="max-w-md" placeholder="e.g. Make A Difference" />
-                  <Button onClick={() => save('donate_hero_tagline', donateHeroTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 1</label>
                 <div className="flex gap-3">
                   <Input value={donateHeroHeading1} onChange={(e) => setDonateHeroHeading1(e.target.value)} className="max-w-md" placeholder="e.g. Your Gift Builds" />
-                  <Button onClick={() => save('donate_hero_heading_1', donateHeroHeading1)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading Line 2</label>
                 <div className="flex gap-3">
                   <Input value={donateHeroHeading2} onChange={(e) => setDonateHeroHeading2(e.target.value)} className="max-w-md" placeholder="e.g. A Better Tomorrow" />
-                  <Button onClick={() => save('donate_hero_heading_2', donateHeroHeading2)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <textarea value={donateHeroDescription} onChange={(e) => setDonateHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. One donation. One student. One family lifted out of poverty..." />
                 <div className="mt-2">
-                  <Button onClick={() => save('donate_hero_description', donateHeroDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['donate_hero_tagline', donateHeroTagline], ['donate_hero_heading_1', donateHeroHeading1], ['donate_hero_heading_2', donateHeroHeading2], ['donate_hero_description', donateHeroDescription]], 'Hero Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -3020,27 +2801,19 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={donateTiersTagline} onChange={(e) => setDonateTiersTagline(e.target.value)} className="max-w-md" placeholder="e.g. Choose Your Level" />
-                  <Button onClick={() => save('donate_tiers_tagline', donateTiersTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={donateTiersHeading} onChange={(e) => setDonateTiersHeading(e.target.value)} className="max-w-md" placeholder="e.g. Every Amount Makes an Impact" />
-                  <Button onClick={() => save('donate_tiers_heading', donateTiersHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <textarea value={donateTiersDescription} onChange={(e) => setDonateTiersDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="e.g. All donations go directly to student training, materials, and support..." />
                 <div className="mt-2">
-                  <Button onClick={() => save('donate_tiers_description', donateTiersDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['donate_tiers_tagline', donateTiersTagline], ['donate_tiers_heading', donateTiersHeading], ['donate_tiers_description', donateTiersDescription]], 'Tiers Section')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -3077,9 +2850,7 @@ function SiteSettingsPage() {
                 </div>
               ))}
             </div>
-            <Button className="mt-4" onClick={() => save('donate_page_tiers', JSON.stringify(donatePageTiers))} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Tiers'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['donate_page_tiers', JSON.stringify(donatePageTiers)]], 'Donation Tier Cards')} pending={bulkMutation.isPending} />
           </div>
 
           {/* Sponsor a Student Section */}
@@ -3091,36 +2862,24 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={donateSponsorTagline} onChange={(e) => setDonateSponsorTagline(e.target.value)} className="max-w-md" placeholder="e.g. Personal Impact" />
-                  <Button onClick={() => save('donate_sponsor_tagline', donateSponsorTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={donateSponsorHeading} onChange={(e) => setDonateSponsorHeading(e.target.value)} className="max-w-md" placeholder="e.g. Sponsor a Student Directly" />
-                  <Button onClick={() => save('donate_sponsor_heading', donateSponsorHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Description</label>
                 <textarea value={donateSponsorDescription} onChange={(e) => setDonateSponsorDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. Through our Sponsor a Student program, you are matched with a specific student..." />
                 <div className="mt-2">
-                  <Button onClick={() => save('donate_sponsor_description', donateSponsorDescription)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Benefits (one per line)</label>
                 <textarea value={donateSponsorBenefits.join('\n')} onChange={(e) => setDonateSponsorBenefits(e.target.value.split('\n').filter(Boolean))} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[100px]" placeholder="e.g. A profile and story of the student you're supporting" />
                 <div className="mt-2">
-                  <Button onClick={() => save('donate_sponsor_benefits', JSON.stringify(donateSponsorBenefits))} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Benefits'}
-                  </Button>
                 </div>
               </div>
               <div className="flex items-end gap-3">
@@ -3128,13 +2887,11 @@ function SiteSettingsPage() {
                   <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Button Text</label>
                   <Input value={donateSponsorBtnText} onChange={(e) => setDonateSponsorBtnText(e.target.value)} placeholder="e.g. Start Sponsoring" />
                 </div>
-                <Button onClick={() => save('donate_sponsor_btn_text', donateSponsorBtnText)} disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                </Button>
+                <SectionSave onClick={() => saveSection([['donate_sponsor_btn_visible', String(donateSponsorBtnVisible)], ['donate_sponsor_tagline', donateSponsorTagline], ['donate_sponsor_heading', donateSponsorHeading], ['donate_sponsor_description', donateSponsorDescription], ['donate_sponsor_benefits', JSON.stringify(donateSponsorBenefits)], ['donate_sponsor_btn_text', donateSponsorBtnText]], 'Sponsor a Student Section')} pending={bulkMutation.isPending} />
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Show button</span>
-                <button onClick={() => { setDonateSponsorBtnVisible(!donateSponsorBtnVisible); save('donate_sponsor_btn_visible', String(!donateSponsorBtnVisible)); }} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateSponsorBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                <button onClick={() => setDonateSponsorBtnVisible(!donateSponsorBtnVisible)} className={`mt-5 px-3 py-2 rounded-lg text-xs font-medium border ${donateSponsorBtnVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                   {donateSponsorBtnVisible ? 'Visible' : 'Hidden'}
                 </button>
               </div>
@@ -3149,7 +2906,7 @@ function SiteSettingsPage() {
               <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Monthly Sponsorship Banner</span>
-                  <button onClick={() => { setDonateStatVisible(!donateStatVisible); save('donate_stat_visible', String(!donateStatVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateStatVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                  <button onClick={() => setDonateStatVisible(!donateStatVisible)} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateStatVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {donateStatVisible ? 'Visible' : 'Hidden'}
                   </button>
                 </div>
@@ -3178,16 +2935,13 @@ function SiteSettingsPage() {
                   </div>
                 </div>
                 <div className="pt-1">
-                  <Button onClick={() => { save('donate_stat_amount', donateStatAmount); save('donate_stat_period', donateStatPeriod); save('donate_stat_text', donateStatText); save('donate_stat_progress', donateStatProgress); save('donate_stat_progress_text', donateStatProgressText); }} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
-                  </Button>
                 </div>
               </div>
 
               <div className="border border-[hsl(var(--border))] rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-[hsl(var(--muted-foreground))]">Current Need Banner</span>
-                  <button onClick={() => { setDonateNeedVisible(!donateNeedVisible); save('donate_need_visible', String(!donateNeedVisible)); }} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateNeedVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
+                  <button onClick={() => setDonateNeedVisible(!donateNeedVisible)} className={`px-3 py-1 rounded-lg text-xs font-medium border ${donateNeedVisible ? 'bg-[hsl(160_35%_85%)] text-[hsl(160_43%_25%)]' : 'bg-[hsl(40_19%_91%)] text-[hsl(var(--muted-foreground))]'}`}>
                     {donateNeedVisible ? 'Visible' : 'Hidden'}
                   </button>
                 </div>
@@ -3204,9 +2958,7 @@ function SiteSettingsPage() {
                   <textarea value={donateNeedText} onChange={(e) => setDonateNeedText(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[60px]" placeholder="e.g. These students are enrolled and ready to start..." />
                 </div>
                 <div className="pt-1">
-                  <Button onClick={() => { save('donate_need_label', donateNeedLabel); save('donate_need_heading', donateNeedHeading); save('donate_need_text', donateNeedText); }} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Banner'}
-                  </Button>
+                  <SectionSave onClick={() => saveSection([['donate_stat_visible', String(donateStatVisible)], ['donate_need_visible', String(donateNeedVisible)], ['donate_stat_amount', donateStatAmount], ['donate_stat_period', donateStatPeriod], ['donate_stat_text', donateStatText], ['donate_stat_progress', donateStatProgress], ['donate_stat_progress_text', donateStatProgressText], ['donate_need_label', donateNeedLabel], ['donate_need_heading', donateNeedHeading], ['donate_need_text', donateNeedText]], 'Sponsor Stats')} pending={bulkMutation.isPending} />
                 </div>
               </div>
             </div>
@@ -3226,18 +2978,12 @@ function SiteSettingsPage() {
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Tagline</label>
                 <div className="flex gap-3">
                   <Input value={donateFaqTagline} onChange={(e) => setDonateFaqTagline(e.target.value)} className="max-w-md" placeholder="e.g. Questions" />
-                  <Button onClick={() => save('donate_faq_tagline', donateFaqTagline)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Heading</label>
                 <div className="flex gap-3">
                   <Input value={donateFaqHeading} onChange={(e) => setDonateFaqHeading(e.target.value)} className="max-w-md" placeholder="e.g. Frequently Asked Questions" />
-                  <Button onClick={() => save('donate_faq_heading', donateFaqHeading)} disabled={updateMutation.isPending}>
-                    {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save'}
-                  </Button>
                 </div>
               </div>
               <div className="space-y-3">
@@ -3252,9 +2998,7 @@ function SiteSettingsPage() {
                   </div>
                 ))}
               </div>
-              <Button className="mt-4" onClick={() => save('donate_faqs', JSON.stringify(donateFaqs))} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save FAQs'}
-              </Button>
+              <SectionSave onClick={() => saveSection([['donate_faq_tagline', donateFaqTagline], ['donate_faq_heading', donateFaqHeading], ['donate_faqs', JSON.stringify(donateFaqs)]], 'FAQ Section')} pending={bulkMutation.isPending} />
             </div>
           </div>
         </div>
@@ -3280,13 +3024,7 @@ function SiteSettingsPage() {
                 <textarea value={contactHeroDescription} onChange={(e) => setContactHeroDescription(e.target.value)} className="w-full max-w-md border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent min-h-[80px]" placeholder="Whether you want to donate, partner, volunteer, or just learn more..." />
               </div>
               <div>
-                <Button onClick={() => {
-                  save('contact_hero_tagline', contactHeroTagline);
-                  save('contact_hero_heading', contactHeroHeading);
-                  save('contact_hero_description', contactHeroDescription);
-                }} disabled={updateMutation.isPending}>
-                  {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Hero Text'}
-                </Button>
+                <SectionSave onClick={() => saveSection([['contact_hero_tagline', contactHeroTagline], ['contact_hero_heading', contactHeroHeading], ['contact_hero_description', contactHeroDescription]], 'Hero Text')} pending={bulkMutation.isPending} />
               </div>
             </div>
           </div>
@@ -3343,7 +3081,7 @@ function SiteSettingsPage() {
             </div>
             <div>
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">WhatsApp Button Text</label>
-              <input value={footerWhatsappCta} onChange={(e) => setFooterWhatsappCta(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="e.g. WhatsApp Us" />
+              <input value={footerWhatsappCta} onChange={(e) => setFooterWhatsappCta(e.target.value)} className="w-full border border-[hsl(var(--border))] rounded-lg px-3 py-2 text-sm bg-transparent" placeholder="Enter the WhatsApp phone number, e.g. 0758862363" />
             </div>
             <div>
               <label className="text-xs font-medium text-[hsl(var(--muted-foreground))] mb-1 block">Address</label>
@@ -3351,15 +3089,7 @@ function SiteSettingsPage() {
             </div>
           </div>
           <div>
-            <Button onClick={() => {
-              save('footer_mission', footerMission);
-              save('footer_email', footerEmail);
-              save('footer_phone', footerPhone);
-              save('footer_whatsapp_cta', footerWhatsappCta);
-              save('footer_address', footerAddress);
-            }} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? <Loader2 className="animate-spin" size={16} /> : 'Save Footer'}
-            </Button>
+            <SectionSave onClick={() => saveSection([['footer_mission', footerMission], ['footer_email', footerEmail], ['footer_phone', footerPhone], ['footer_whatsapp_cta', footerWhatsappCta], ['footer_address', footerAddress]], 'Footer')} pending={bulkMutation.isPending} />
           </div>
         </div>
       </div>
@@ -3431,7 +3161,7 @@ function StudentStoriesManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3562,7 +3292,7 @@ function PhotoGalleryManager() {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('http://localhost:8080/api/v1/storage/upload', { method: 'POST', body: formData });
+      const res = await fetch(`${NAP_API}/api/v1/storage/upload`, { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const data = await res.json();
       return data.url || data.fileUrl || null;
@@ -3690,22 +3420,71 @@ function GalleryItemForm({ item, onClose, onUpload }: { item: Record<string, str
 }
 
 function AdminSettingsPage() {
-  const { data: adminProfile } = useGetAdminMe({ query: { enabled: Boolean(localStorage.getItem('nap_admin_token')), retry: false, queryKey: getGetAdminMeQueryKey() } });
+  const hasToken = Boolean(localStorage.getItem('nap_admin_token'));
+  const qc = useQueryClient();
+  const { data: adminProfile, error: adminProfileError, isFetching: profileFetching } = useGetAdminMe({ query: { enabled: hasToken, retry: false, queryKey: getGetAdminMeQueryKey() } });
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { fullName: string; email: string }) =>
-      customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
+    mutationFn: (data: { fullName: string; email: string }) => {
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/profile', { fullName: data.fullName, email: data.email });
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/profile', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: async (result) => {
+      debugLog('[ADMIN-SET] profile update succeeded', {
+        fullName: result?.fullName ?? null,
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
+      });
+      // AuthGate renders the sidebar identity from this same query key, so the
+      // cached entry must be invalidated or the sidebar keeps the old email.
+      // Seed the cache from the mutation result to update the sidebar
+      // immediately, then refetch to confirm against the backend.
+      // /auth/profile returns no token (only a password change mints one), so
+      // keep whatever the previous entry held instead of clobbering it.
+      qc.setQueryData(getGetAdminMeQueryKey(), (prev: any) => ({
+        ...(prev ?? {}),
+        fullName: result?.fullName ?? prev?.fullName,
+        email: result?.email ?? prev?.email,
+        token: prev?.token ?? null,
+      }));
+      debugLog('[ADMIN-SET] sidebar identity updated from mutation result');
+      await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      debugLog('[ADMIN-SET] invalidated /auth/me, refetching');
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] profile update', err),
   });
   const changePasswordMutation = useMutation({
-    mutationFn: (data: { currentPassword: string; newPassword: string }) =>
-      customFetch<{ status: string; message: string }>('/api/v1/admin/auth/password', {
+    mutationFn: (data: { currentPassword: string; newPassword: string }) => {
+      // Password values are deliberately never logged - only presence and length.
+      debugLog('[ADMIN-SET] PUT /api/v1/admin/auth/password', {
+        currentPasswordProvided: data.currentPassword.length > 0,
+        newPasswordLength: data.newPassword.length,
+      });
+      return customFetch<{ token: string | null; email: string; fullName: string }>('/api/v1/admin/auth/password', {
         method: 'PUT',
         body: JSON.stringify(data),
         headers: { 'Content-Type': 'application/json' },
-      }),
+      });
+    },
+    onSuccess: async (result) => {
+      // Changing the password revokes every previously issued token, so the
+      // backend hands back a fresh one. Store it or this browser loses access too.
+      debugLog('[ADMIN-SET] password change succeeded', {
+        email: result?.email ?? null,
+        tokenReturned: Boolean(result?.token),
+      });
+      if (result?.token) {
+        localStorage.setItem('nap_admin_token', result.token);
+        debugLog('[ADMIN-SET] refreshed token stored after password change');
+        await qc.invalidateQueries({ queryKey: getGetAdminMeQueryKey() });
+      } else {
+        debugWarn('[ADMIN-SET] no token returned - existing session may now be revoked');
+      }
+    },
+    onError: (err) => traceApiError('[ADMIN-SET] password change', err),
   });
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -3717,13 +3496,43 @@ function AdminSettingsPage() {
   const saveToastTimer = useRef<ReturnType<typeof setTimeout>>(null);
 
   const showSaveToast = (title: string, description: string) => {
+    debugLog('[ADMIN-SET] toast', { title, description });
     if (saveToastTimer.current) clearTimeout(saveToastTimer.current);
     setSaveToast({ title, description });
     saveToastTimer.current = setTimeout(() => setSaveToast(null), 3500);
   };
 
   useEffect(() => {
+    debugLog('[ADMIN-SET] page mounted', { hasToken, profileFetching });
+  }, [hasToken]);
+
+  useEffect(() => {
+    if (adminProfile) {
+      debugLog('[ADMIN-SET] profile loaded', {
+        fullName: adminProfile.fullName ?? null,
+        email: adminProfile.email ?? null,
+      });
+    }
+  }, [adminProfile]);
+
+  useEffect(() => {
+    if (adminProfileError) {
+      traceApiError('[ADMIN-SET] profile fetch', adminProfileError);
+    }
+  }, [adminProfileError]);
+
+  useEffect(() => {
+    if (!loaded) {
+      debugWarn('[ADMIN-SET] still waiting on profile before rendering', {
+        hasProfile: Boolean(adminProfile),
+        hasError: Boolean(adminProfileError),
+      });
+    }
+  }, [loaded, adminProfile, adminProfileError]);
+
+  useEffect(() => {
     if (adminProfile && !loaded) {
+      debugLog('[ADMIN-SET] hydrating form from profile');
       setFullName(adminProfile.fullName || '');
       setEmail(adminProfile.email || '');
       setLoaded(true);
@@ -3758,15 +3567,22 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!fullName.trim() || !email.trim()) {
+              debugWarn('[ADMIN-SET] save profile blocked: name and email are required', {
+                fullNameProvided: fullName.trim().length > 0,
+                emailProvided: email.trim().length > 0,
+              });
               showSaveToast('Error', 'Name and email are required.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting profile update');
               const result = await updateProfileMutation.mutateAsync({ fullName, email });
               if (result.email) setEmail(result.email);
               if (result.fullName) setFullName(result.fullName);
+              debugLog('[ADMIN-SET] profile update completed, form resynced');
               showSaveToast('Profile Updated', 'Your administrator profile has been saved.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] profile update (save button)', err);
               showSaveToast('Error', err?.message || 'Failed to update profile.');
             }
           }} disabled={updateProfileMutation.isPending}>
@@ -3796,24 +3612,39 @@ function AdminSettingsPage() {
           </div>
           <Button onClick={async () => {
             if (!currentPassword || !newPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: fields empty', {
+                currentPasswordProvided: currentPassword.length > 0,
+                newPasswordProvided: newPassword.length > 0,
+              });
               showSaveToast('Error', 'All password fields are required.');
               return;
             }
             if (newPassword.length < 6) {
+              debugWarn('[ADMIN-SET] change password blocked: new password too short', {
+                newPasswordLength: newPassword.length,
+                minimum: 6,
+              });
               showSaveToast('Error', 'New password must be at least 6 characters.');
               return;
             }
             if (newPassword !== confirmPassword) {
+              debugWarn('[ADMIN-SET] change password blocked: confirmation mismatch', {
+                newPasswordLength: newPassword.length,
+                confirmPasswordLength: confirmPassword.length,
+              });
               showSaveToast('Error', 'New passwords do not match.');
               return;
             }
             try {
+              debugLog('[ADMIN-SET] submitting password change');
               await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
               setCurrentPassword('');
               setNewPassword('');
               setConfirmPassword('');
-              showSaveToast('Password Changed', 'Your password has been updated successfully.');
+              debugLog('[ADMIN-SET] password change completed, fields cleared');
+              showSaveToast('Password Changed', 'Password updated. Other devices have been signed out.');
             } catch (err: any) {
+              traceApiError('[ADMIN-SET] password change (submit button)', err);
               showSaveToast('Error', err?.message || 'Failed to change password. Check your current password.');
             }
           }} disabled={changePasswordMutation.isPending}>

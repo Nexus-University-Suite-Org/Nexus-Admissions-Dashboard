@@ -1,5 +1,5 @@
 server:
-  port: 8083
+  port: ${PORT:8080}
   compression:
     enabled: true
     mime-types: application/json,text/html,text/plain,text/css
@@ -14,9 +14,9 @@ spring:
       enabled: true
 
   datasource:
-    url: ${DATABASE_URL:jdbc:h2:mem:admissionsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
-    username: ${DATABASE_USER:sa}
-    password: ${DATABASE_PASSWORD:}
+    url: ${JDBC_DATABASE_URL:${DATABASE_URL:jdbc:h2:mem:admissionsdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}}
+    username: ${JDBC_DATABASE_USER:${DATABASE_USER:sa}}
+    password: ${JDBC_DATABASE_PASSWORD:${DATABASE_PASSWORD:}}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
