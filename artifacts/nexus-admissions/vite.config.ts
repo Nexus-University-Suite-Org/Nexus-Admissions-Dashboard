@@ -1,4 +1,4 @@
-import path from 'path';
+﻿import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, loadEnv } from 'vite';
@@ -78,6 +78,9 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+    },
     fs: {
       strict: true,
     },
@@ -90,5 +93,11 @@ export default defineConfig({
     port,
     host: '0.0.0.0',
     allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+    },
   },
 });
+
+
+

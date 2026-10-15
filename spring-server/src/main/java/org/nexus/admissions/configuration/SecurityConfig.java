@@ -96,7 +96,18 @@ public class SecurityConfig {
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
 
+        // The public catalogue is read-only and fetched by the applicant portal,
+        // which is hosted on a different origin than this API. It carries no
+        // credentials, so any origin may read it. The more specific path mapping
+        // takes precedence over the catch-all below.
+        CorsConfiguration publicConfig = new CorsConfiguration();
+        publicConfig.setAllowedOriginPatterns(List.of("*"));
+        publicConfig.setAllowedMethods(List.of("GET", "OPTIONS"));
+        publicConfig.setAllowedHeaders(List.of("*"));
+        publicConfig.setAllowCredentials(false);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/v1/public/**", publicConfig);
         source.registerCorsConfiguration("/**", config);
         return source;
     }
@@ -110,8 +121,10 @@ public class SecurityConfig {
         List<String> origins = new ArrayList<>(List.of(
                 "http://localhost:5173", "http://localhost:5174", "http://localhost:5175",
                 "http://localhost:5176", "http://localhost:5177", "http://localhost:5178", "http://localhost:5179",
+                "http://localhost:5180",
                 "http://127.0.0.1:5173", "http://127.0.0.1:5174", "http://127.0.0.1:5175",
                 "http://127.0.0.1:5176", "http://127.0.0.1:5177", "http://127.0.0.1:5178", "http://127.0.0.1:5179",
+                "http://127.0.0.1:5180",
                 "http://localhost:4173", "http://127.0.0.1:4173",
                 "http://localhost:18548", "http://127.0.0.1:18548"
         ));
