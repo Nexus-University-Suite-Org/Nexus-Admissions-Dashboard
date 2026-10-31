@@ -61,6 +61,14 @@ public class AdminFacade {
     }
 
     @Transactional
+    public AdminLoginResponse loginWithSso(String email) {
+        Admin admin = adminService.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new UnauthorizedException("No administrator account matches this identity."));
+        String token = jwtUtil.generateToken(admin.getId(), admin.getEmail());
+        return new AdminLoginResponse(token, admin.getEmail(), admin.getFullName());
+    }
+
+    @Transactional
     public AdminLoginResponse me(Long adminId) {
         Admin admin = adminService.findById(adminId)
                 .orElseThrow(() -> new UnauthorizedException("Admin not found"));

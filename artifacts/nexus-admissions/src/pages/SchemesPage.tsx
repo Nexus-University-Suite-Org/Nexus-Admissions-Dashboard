@@ -42,6 +42,7 @@ type AdmissionScheme = {
   capacity: number | null;
   applicationFees: string;
   serviceFee: number | null;
+  preferredStartDate: string | null;
   status: string;
   daysLeft: number | null;
   programCount: number;
@@ -533,6 +534,15 @@ function SchemeForm({
       existingFees.nonEastAfrican != null
         ? String(existingFees.nonEastAfrican)
         : "",
+    preferredStartDate: (() => {
+      if (!scheme?.preferredStartDate) return "";
+      try {
+        const parsed = JSON.parse(scheme.preferredStartDate);
+        return Array.isArray(parsed) ? parsed.join(", ") : String(parsed);
+      } catch {
+        return scheme.preferredStartDate;
+      }
+    })(),
     status: scheme?.status || "OPEN",
   });
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
@@ -712,6 +722,14 @@ function SchemeForm({
       appCloseDate: fromLocalDT(form.appCloseDate),
       capacity: form.capacity ? Number(form.capacity) : null,
       applicationFees,
+      preferredStartDate: form.preferredStartDate
+        ? JSON.stringify(
+            form.preferredStartDate
+              .split(",")
+              .map((d) => d.trim())
+              .filter(Boolean),
+          )
+        : null,
       serviceFee: form.serviceFee ? Number(form.serviceFee) : 0,
       status: form.status,
       programIds: selectedIds,
@@ -840,6 +858,19 @@ function SchemeForm({
             onChange={(v) => set("intakeMonth", v)}
             options={INTAKE_MONTHS}
           />
+        </div>
+
+        <div>
+          <Field
+            label="Preferred Start Date(s)"
+            value={form.preferredStartDate}
+            onChange={(v) => set("preferredStartDate", v)}
+            placeholder="e.g. August 2026, January 2027"
+          />
+          <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">
+            Comma-separated. These are the start dates applicants choose from
+            when they apply to this scheme.
+          </p>
         </div>
 
         <div>

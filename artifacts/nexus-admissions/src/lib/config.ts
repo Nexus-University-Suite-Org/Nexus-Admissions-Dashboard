@@ -2,13 +2,13 @@
  * Base URLs for the two backends this dashboard talks to.
  *
  * NAP (port 8080 in dev)  -> the main Nexus Application Portal backend.
- *   Serves /api/v1/admin/programs, /admin/schemes, /admin/program-categories
- *   and /api/v1/notifications* used by ProgramsPage, SchemesPage,
- *   CategoriesPage and useNotifications.
+ *   Serves /admin/schemes and /api/v1/notifications* used by SchemesPage
+ *   and useNotifications.
  *
  * NAD (port 8083 in dev)  -> the admissions backend.
- *   Serves /api/v1/admin/partners, /admin/gallery, /admin/student-stories and
- *   the customFetch client base. Requires an admin token (401/403 otherwise).
+ *   Serves /api/v1/admin/programs, /admin/program-categories,
+ *   /admin/partners, /admin/gallery, /admin/student-stories and the
+ *   customFetch client base. Requires an admin token (401/403 otherwise).
  *
  * Both fall back to localhost so local development needs no env file.
  */

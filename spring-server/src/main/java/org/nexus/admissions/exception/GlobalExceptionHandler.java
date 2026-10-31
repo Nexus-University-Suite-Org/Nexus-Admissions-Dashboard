@@ -53,6 +53,15 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(NotFoundException.class)
+    public ProblemDetail handleNotFound(NotFoundException ex) {
+        log.info("Resource not found: {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+        problem.setTitle("Not found");
+        problem.setProperty("error", ex.getMessage());
+        return problem;
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ProblemDetail handleRuntime(RuntimeException ex) {
         log.warn("Runtime exception: {}", ex.getMessage());

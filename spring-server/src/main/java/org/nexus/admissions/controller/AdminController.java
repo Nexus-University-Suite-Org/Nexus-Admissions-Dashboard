@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import org.nexus.admissions.configuration.JwtAuthFilter;
+import org.nexus.admissions.configuration.KeycloakTokenVerifier;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
 import org.nexus.admissions.dto.AdminUpdateRequest;
@@ -15,6 +16,7 @@ import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,14 +32,24 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
     private final AdminFacade adminFacade;
+    private final KeycloakTokenVerifier keycloakTokenVerifier;
 
-    public AdminController(AdminFacade adminFacade) {
+    public AdminController(AdminFacade adminFacade,
+                           KeycloakTokenVerifier keycloakTokenVerifier) {
         this.adminFacade = adminFacade;
+        this.keycloakTokenVerifier = keycloakTokenVerifier;
     }
 
     @PostMapping("/auth/login")
     public ResponseEntity<AdminLoginResponse> login(@Valid @RequestBody AdminLoginRequest request) {
         return ResponseEntity.ok(adminFacade.login(request));
+    }
+
+    @PostMapping("/auth/sso")
+    public ResponseEntity<AdminLoginResponse> sso(
+            @RequestHeader("Authorization") String authorization) {
+        return ResponseEntity.ok(adminFacade.loginWithSso(
+                keycloakTokenVerifier.verifiedEmail(authorization)));
     }
 
     @GetMapping("/auth/me")

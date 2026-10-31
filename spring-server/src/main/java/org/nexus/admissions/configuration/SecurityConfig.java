@@ -47,6 +47,7 @@ public class SecurityConfig {
                                         "Forbidden", "Access denied")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/admin/auth/login").permitAll()
+                        .requestMatchers("/api/v1/admin/auth/sso").permitAll()
                         .requestMatchers("/api/healthz").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").authenticated()
