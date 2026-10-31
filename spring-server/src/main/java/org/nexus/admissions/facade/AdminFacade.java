@@ -21,8 +21,10 @@ import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.model.Admin;
 import org.nexus.admissions.service.AdminService;
 import org.nexus.admissions.service.NapBackendClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class AdminFacade {
@@ -51,6 +53,15 @@ public class AdminFacade {
             throw new RuntimeException("Invalid administrator credentials.");
         }
 
+        String token = jwtUtil.generateToken(admin.getId(), admin.getEmail());
+        return new AdminLoginResponse(token, admin.getEmail(), admin.getFullName());
+    }
+
+    @Transactional
+    public AdminLoginResponse loginWithSso(String email) {
+        Admin admin = adminService.findByEmailIgnoreCase(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN, "No administrator account matches this identity."));
         String token = jwtUtil.generateToken(admin.getId(), admin.getEmail());
         return new AdminLoginResponse(token, admin.getEmail(), admin.getFullName());
     }

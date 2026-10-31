@@ -23,6 +23,10 @@ public class AdminService {
         return repository.findByEmail(email);
     }
 
+    public Optional<Admin> findByEmailIgnoreCase(String email) {
+        return repository.findByEmailIgnoreCase(email);
+    }
+
     public Admin create(Admin admin) {
         admin.setCreatedAt(LocalDateTime.now());
         return repository.save(admin);

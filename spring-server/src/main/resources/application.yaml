@@ -66,6 +66,10 @@ nap:
     secret: ${JWT_SECRET:}
     expiration-hours: ${JWT_EXPIRATION_HOURS:24}
 
+nexus-identity:
+  issuer-uri: ${NEXUS_IDENTITY_ISSUER_URI:http://localhost:9000}
+  audience: ${NEXUS_IDENTITY_AUDIENCE:nexus-admissions-dashboard}
+
 logging:
   level:
     org.hibernate.SQL: WARN

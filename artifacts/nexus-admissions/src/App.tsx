@@ -71,6 +71,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
+import { useNexusAuth } from '@/lib/nexus-auth';
 import './index.css';
 
 const NAD_API = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8083';
@@ -224,6 +225,7 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
 
 function Shell({ children, identity }: { children: ReactNode; identity?: { fullName: string; email: string } }) {
   const [location, setLocation] = useLocation();
+  const { logout: logoutSso } = useNexusAuth();
   const [mobileNav, setMobileNav] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showBellDropdown, setShowBellDropdown] = useState(false);
@@ -243,6 +245,9 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
     localStorage.removeItem('nap_admin_token');
     queryClient.clear();
     setLocation('/admin/login');
+    void logoutSso('/admin/login').catch((error: unknown) =>
+      console.error('[SSO] admissions logout failed', error),
+    );
   };
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -451,9 +456,63 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
 function LoginPage() {
   const [, setLocation] = useLocation();
   const login = useAdminLogin();
+  const { status, getAccessToken, login: loginWithSso, client } = useNexusAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const ssoSyncing = useRef(false);
+  const syncedIdentityToken = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    const synchronizeSsoSession = async () => {
+      if (status !== 'authenticated' || ssoSyncing.current) return;
+      ssoSyncing.current = true;
+      setSsoLoading(true);
+      try {
+        const identityToken = await getAccessToken();
+        if (!identityToken || identityToken === syncedIdentityToken.current) return;
+
+        const response = await fetch(`${NAD_API}/api/v1/admin/auth/sso`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${identityToken}` },
+        });
+        const session = await response.json().catch(() => null) as
+          | { token?: string; detail?: string; message?: string }
+          | null;
+        if (!response.ok || !session?.token) {
+          throw new Error(
+            session?.detail ?? session?.message ?? `SSO failed (HTTP ${response.status})`,
+          );
+        }
+        if (!active) return;
+
+        syncedIdentityToken.current = identityToken;
+        setSsoError(null);
+        localStorage.setItem('nap_admin_token', session.token);
+        queryClient.clear();
+        setLocation('/admin');
+      } catch (error: unknown) {
+        if (!active) return;
+        setSsoError(error instanceof Error ? error.message : String(error));
+        console.error('[SSO] admissions sign-in failed', error);
+      } finally {
+        ssoSyncing.current = false;
+        if (active) setSsoLoading(false);
+      }
+    };
+
+    void synchronizeSsoSession();
+    const unsubscribe = client.subscribe(() => void synchronizeSsoSession());
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [client, getAccessToken, setLocation, status]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!email || !password) return;
@@ -476,6 +535,31 @@ function LoginPage() {
           {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">We couldn't sign you in. Check your email and password, then try again.</div>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
+        <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]">
+          <span className="h-px flex-1 bg-[hsl(var(--border))]" />
+          or continue with
+          <span className="h-px flex-1 bg-[hsl(var(--border))]" />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={ssoLoading}
+          className="h-12 w-full rounded-xl"
+          onClick={() => void loginWithSso('/admin/login').catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            setSsoError(message);
+            console.error('[SSO] could not start admissions sign-in', error);
+          })}
+        >
+          {ssoLoading
+            ? <><Loader2 size={16} className="animate-spin" /> Verifying SSO</>
+            : 'Sign in with University SSO'}
+        </Button>
+        {ssoError && (
+          <div role="alert" className="mt-3 rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">
+            {ssoError}
+          </div>
+        )}
          <div className="mt-5 rounded-xl border border-[hsl(var(--accent)/.35)] bg-[hsl(var(--accent)/.08)] px-4 py-3 text-[11px] leading-5 text-[hsl(var(--foreground)/.75)]"><p className="nexus-kicker mb-1 text-[hsl(var(--primary))]">Demo access</p><p>admin@nexus.edu <span className="mx-1 opacity-40">·</span> admin123</p></div>
         <div className="mt-12 flex items-start gap-3 border-t border-[hsl(var(--border))] pt-5 text-[11px] leading-5 text-[hsl(var(--muted-foreground))]"><ShieldCheck size={15} className="mt-0.5 shrink-0 text-[hsl(var(--primary))]" /><p>Access is monitored and protected. If you need assistance, contact the registrar's office.</p></div>
       </div></div>
