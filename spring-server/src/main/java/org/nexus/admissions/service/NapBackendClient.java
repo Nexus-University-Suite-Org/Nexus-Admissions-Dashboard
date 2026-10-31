@@ -12,7 +12,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import org.nexus.admissions.configuration.NapBackendProperties;
+import org.nexus.admissions.exception.UpstreamServiceException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 @Service
 public class NapBackendClient {
@@ -124,9 +127,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), NapProgram[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch programmes from NAP-Backend: " + e.getMessage(), e);
         }
@@ -141,9 +146,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), new com.fasterxml.jackson.core.type.TypeReference<>() {});
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch qualifications: " + e.getMessage(), e);
         }
@@ -158,9 +165,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return fetchById(applicationId);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to override programme: " + e.getMessage(), e);
         }
@@ -175,9 +184,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), NapApplication[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch applications from NAP-Backend: " + e.getMessage(), e);
         }
@@ -192,9 +203,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), NapApplication.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch application from NAP-Backend: " + e.getMessage(), e);
         }
@@ -213,9 +226,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), NapApplication.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to review application on NAP-Backend: " + e.getMessage(), e);
         }
@@ -223,7 +238,7 @@ public class NapBackendClient {
 
     public List<Map<String, Object>> fetchSiteSettingsAdmin() {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/site-settings"))
                     .header("Accept", "application/json")
@@ -232,9 +247,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch site settings: " + e.getMessage(), e);
         }
@@ -242,7 +259,7 @@ public class NapBackendClient {
 
     public Map<String, Object> updateSiteSetting(String settingKey, String settingValue) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(Map.of("settingKey", settingKey, "settingValue", settingValue));
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/site-settings"))
@@ -253,9 +270,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update site setting: " + e.getMessage(), e);
         }
@@ -263,7 +282,7 @@ public class NapBackendClient {
 
     public List<Map<String, Object>> fetchStudentStoriesAdmin() {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/student-stories"))
                     .header("Accept", "application/json")
@@ -272,9 +291,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch student stories: " + e.getMessage(), e);
         }
@@ -282,7 +303,7 @@ public class NapBackendClient {
 
     public Map<String, Object> createStudentStory(Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/student-stories"))
@@ -293,9 +314,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 201 && response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create student story: " + e.getMessage(), e);
         }
@@ -303,7 +326,7 @@ public class NapBackendClient {
 
     public Map<String, Object> updateStudentStory(Long id, Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/student-stories/" + id))
@@ -314,9 +337,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update student story: " + e.getMessage(), e);
         }
@@ -324,7 +349,7 @@ public class NapBackendClient {
 
     public void deleteStudentStory(Long id) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/student-stories/" + id))
                     .header("Authorization", "Bearer " + token)
@@ -332,8 +357,10 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200 && response.statusCode() != 204) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete student story: " + e.getMessage(), e);
         }
@@ -341,7 +368,7 @@ public class NapBackendClient {
 
     public List<Map<String, Object>> fetchGalleryAdmin() {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/gallery"))
                     .header("Accept", "application/json")
@@ -350,9 +377,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch gallery items: " + e.getMessage(), e);
         }
@@ -360,7 +389,7 @@ public class NapBackendClient {
 
     public Map<String, Object> createGalleryItem(Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/gallery"))
@@ -371,9 +400,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 201 && response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create gallery item: " + e.getMessage(), e);
         }
@@ -381,7 +412,7 @@ public class NapBackendClient {
 
     public Map<String, Object> updateGalleryItem(Long id, Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/gallery/" + id))
@@ -392,9 +423,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update gallery item: " + e.getMessage(), e);
         }
@@ -402,7 +435,7 @@ public class NapBackendClient {
 
     public void deleteGalleryItem(Long id) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/gallery/" + id))
                     .header("Authorization", "Bearer " + token)
@@ -410,8 +443,10 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200 && response.statusCode() != 204) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete gallery item: " + e.getMessage(), e);
         }
@@ -419,7 +454,7 @@ public class NapBackendClient {
 
     public List<Map<String, Object>> fetchPartners() {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners"))
                     .header("Accept", "application/json")
@@ -428,9 +463,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return List.of(objectMapper.readValue(response.body(), Map[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch partners: " + e.getMessage(), e);
         }
@@ -438,7 +475,7 @@ public class NapBackendClient {
 
     public Map<String, Object> createPartner(Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners"))
@@ -449,9 +486,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 201 && response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create partner: " + e.getMessage(), e);
         }
@@ -459,7 +498,7 @@ public class NapBackendClient {
 
     public Map<String, Object> updatePartner(Long id, Map<String, Object> body) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             String json = objectMapper.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners/" + id))
@@ -470,9 +509,11 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
             return objectMapper.readValue(response.body(), Map.class);
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update partner: " + e.getMessage(), e);
         }
@@ -480,7 +521,7 @@ public class NapBackendClient {
 
     public void deletePartner(Long id) {
         try {
-            String token = loginToNap();
+            String token = currentAdminToken();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.baseUrl() + "/api/v1/admin/partners/" + id))
                     .header("Authorization", "Bearer " + token)
@@ -488,30 +529,49 @@ public class NapBackendClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200 && response.statusCode() != 204) {
-                throw new RuntimeException("NAP-Backend returned " + response.statusCode());
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
             }
+        } catch (UpstreamServiceException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete partner: " + e.getMessage(), e);
         }
     }
 
-    private String loginToNap() {
-        try {
-            String json = objectMapper.writeValueAsString(Map.of("email", "admin@nexus.edu", "password", "admin123"));
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/auth/login"))
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                throw new RuntimeException("NAP-Backend login returned " + response.statusCode());
-            }
-            Map<String, Object> body = objectMapper.readValue(response.body(), Map.class);
-            return (String) body.get("token");
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to login to NAP-Backend: " + e.getMessage(), e);
+    /**
+     * Returns the bearer token of the administrator whose request is in flight,
+     * so the call is made on their behalf rather than as a separate service
+     * account.
+     *
+     * <p>NAD and NAP-Backend share one JWT secret ({@code JWT_SECRET}), so a
+     * token minted by either is accepted by the other. That makes forwarding
+     * possible and removes the need for this service to hold its own set of
+     * NAP-Backend credentials - a hardcoded local-admin login that silently
+     * rotted and broke every proxied admin call.
+     *
+     * <p>Only ever reached from /api/v1/admin/**, which is already gated on the
+     * ADMIN role, so the forwarded token is always an administrator's.
+     */
+    private String currentAdminToken() {
+        var attrs = RequestContextHolder.getRequestAttributes();
+        if (!(attrs instanceof ServletRequestAttributes servletAttrs)) {
+            throw new UpstreamServiceException(
+                    "No request in progress: cannot resolve the caller's bearer token for NAP-Backend");
         }
+        String authorization = servletAttrs.getRequest().getHeader("Authorization");
+        if (authorization == null || authorization.isBlank()) {
+            throw new UpstreamServiceException(
+                    "Missing Authorization header: cannot call NAP-Backend on the caller's behalf");
+        }
+        // Callers prepend "Bearer " themselves, so return the token only.
+        String prefix = "Bearer ";
+        if (authorization.regionMatches(true, 0, prefix, 0, prefix.length())) {
+            String token = authorization.substring(prefix.length()).trim();
+            if (!token.isEmpty()) {
+                return token;
+            }
+        }
+        throw new UpstreamServiceException(
+                "Malformed Authorization header: expected 'Bearer <token>'");
     }
 }

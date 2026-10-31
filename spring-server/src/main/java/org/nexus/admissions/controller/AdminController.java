@@ -13,6 +13,7 @@ import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -66,12 +67,11 @@ public class AdminController {
     }
 
     @PutMapping("/auth/password")
-    public ResponseEntity<Map<String, String>> changePassword(
+    public ResponseEntity<AdminLoginResponse> changePassword(
             Authentication authentication,
             @Valid @RequestBody PasswordChangeRequest request) {
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        adminFacade.changePassword(principal.id(), request);
-        return ResponseEntity.ok(Map.of("status", "ok", "message", "Password changed successfully."));
+        return ResponseEntity.ok(adminFacade.changePassword(principal.id(), request));
     }
 
     @GetMapping("/dashboard/stats")

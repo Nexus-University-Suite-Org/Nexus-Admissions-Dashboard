@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'wouter';
 import { customFetch } from '@workspace/api-client-react';
@@ -12,8 +12,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Loader2, Plus, Pencil, Trash2, Search, GraduationCap, BookOpen, ChevronDown, ChevronRight, X, GripVertical, Check, AlertCircle } from 'lucide-react';
+import { NAD_API_BASE_URL } from '@/lib/config';
+import { debugLog, traceApiError } from '@/lib/debug';
 
-const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
+const ADMIN_API = NAD_API_BASE_URL;
 
 type Program = {
   id: number; programName: string; programCode: string; programType: string;
@@ -88,20 +90,71 @@ export default function ProgramsPage() {
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: programs = [], isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: programs = [],
+    isLoading,
+    isError,
+    error: programsError,
+    refetch,
+    status: programsStatus,
+  } = useQuery({
     queryKey: ['admin-programs'],
-    queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
+    queryFn: () => customFetch<Program[]>(`${ADMIN_API}/api/v1/admin/programs`),
   });
 
-  const { data: categories = [] } = useQuery({
+  const { data: categories = [], error: categoriesError, status: categoriesStatus } = useQuery({
     queryKey: ['admin-program-categories'],
-    queryFn: () => customFetch<ProgramCategory[]>(`${NAP_API}/api/v1/admin/program-categories`),
+    queryFn: () => customFetch<ProgramCategory[]>(`${ADMIN_API}/api/v1/admin/program-categories`),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-programs'] }),
+    mutationFn: (id: number) => customFetch(`${ADMIN_API}/api/v1/admin/programs/${id}`, { method: 'DELETE' }),
+    onSuccess: (_data, id) => {
+      debugLog('[PROGRAMS] delete accepted', { id });
+      queryClient.invalidateQueries({ queryKey: ['admin-programs'] });
+    },
+    onError: (err) => traceApiError('[PROGRAMS] delete failed', err),
   });
+
+  useEffect(() => {
+    debugLog('[PROGRAMS] mounted — loading from', `${ADMIN_API}/api/v1/admin/programs`);
+    return () => debugLog('[PROGRAMS] unmounted');
+  }, []);
+
+  // Log once per real load, not per render.
+  const programsState = `${programsStatus}:${programs.length}`;
+  const prevProgramsState = useRef(programsState);
+  useEffect(() => {
+    if (prevProgramsState.current === programsState) return;
+    const previous = prevProgramsState.current;
+    prevProgramsState.current = programsState;
+    debugLog('[PROGRAMS] list loaded', {
+      previous,
+      result: { status: programsStatus, programs: programs.length },
+      url: `${ADMIN_API}/api/v1/admin/programs`,
+    });
+  }, [programsState, programsStatus, programs.length]);
+
+  const categoriesState = `${categoriesStatus}:${categories.length}`;
+  const prevCategoriesState = useRef(categoriesState);
+  useEffect(() => {
+    if (prevCategoriesState.current === categoriesState) return;
+    const previous = prevCategoriesState.current;
+    prevCategoriesState.current = categoriesState;
+    debugLog('[PROGRAMS] categories loaded', {
+      previous,
+      result: { status: categoriesStatus, categories: categories.length },
+      url: `${ADMIN_API}/api/v1/admin/program-categories`,
+    });
+  }, [categoriesState, categoriesStatus, categories.length]);
+
+  useEffect(() => {
+    if (programsError) traceApiError('[PROGRAMS] load list', programsError);
+  }, [programsError]);
+
+  useEffect(() => {
+    if (categoriesError) traceApiError('[PROGRAMS] load categories', categoriesError);
+  }, [categoriesError]);
 
   const filtered = programs.filter(p => {
     if (search && !p.programName.toLowerCase().includes(search.toLowerCase()) && !p.programCode?.toLowerCase().includes(search.toLowerCase())) return false;
@@ -110,6 +163,22 @@ export default function ProgramsPage() {
     return true;
   });
 
+  // Client-side filtering: log when the result set actually changes.
+  const filteredState = `${programs.length}:${filtered.length}:${search}:${filterType}:${filterStatus}`;
+  const prevFilteredState = useRef(filteredState);
+  useEffect(() => {
+    if (prevFilteredState.current === filteredState) return;
+    const previous = prevFilteredState.current;
+    prevFilteredState.current = filteredState;
+    debugLog('[PROGRAMS] filters applied', {
+      filters: { search: search || null, type: filterType || null, status: filterStatus || null },
+      shown: filtered.length,
+      total: programs.length,
+      previous,
+      note: filtered.length === 0 && programs.length > 0 ? 'filters matched nothing' : null,
+    });
+  }, [filteredState, filtered.length, programs.length, search, filterType, filterStatus]);
+
   const statusColor = (s: string) => {
     if (s === 'Active') return 'bg-emerald-100 text-emerald-700';
     if (s === 'Inactive') return 'bg-gray-100 text-gray-600';
@@ -117,8 +186,8 @@ export default function ProgramsPage() {
     return 'bg-red-100 text-red-600';
   };
 
-  const openEdit = (p: Program) => { setEditingProgram(p); setShowForm(true); };
-  const openNew = () => { setEditingProgram(null); setShowForm(true); };
+  const openEdit = (p: Program) => { debugLog('[PROGRAMS] open edit form', { id: p.id, programCode: p.programCode }); setEditingProgram(p); setShowForm(true); };
+  const openNew = () => { debugLog('[PROGRAMS] open create form'); setEditingProgram(null); setShowForm(true); };
 
   if (showForm) {
     return <ProgramForm program={editingProgram} categories={categories} existingCodes={programs.map(p => p.programCode).filter(Boolean)} onClose={() => { setShowForm(false); setEditingProgram(null); }} />;
@@ -148,7 +217,7 @@ export default function ProgramsPage() {
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search programmes..." className="pl-9" />
+          <Input value={search} onChange={(e) => { debugLog('[PROGRAMS] search changed', { value: e.target.value }); setSearch(e.target.value); }} placeholder="Search programmes..." className="pl-9" />
         </div>
       </div>
 
@@ -160,7 +229,7 @@ export default function ProgramsPage() {
       {isLoading ? (
         <div className="flex items-center justify-center py-20"><Loader2 className="animate-spin" size={24} /></div>
       ) : isError ? (
-        <QueryErrorState resource="programmes" error={error} onRetry={() => refetch()} />
+        <QueryErrorState resource="programmes" error={programsError} onRetry={() => refetch()} />
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <GraduationCap size={40} className="mx-auto mb-4 opacity-30" />
@@ -170,7 +239,8 @@ export default function ProgramsPage() {
         <div className="space-y-3">
           {filtered.map(p => (
             <div key={p.id} className="nexus-card rounded-2xl border overflow-hidden">
-              <button onClick={() => setExpandedId(expandedId === p.id ? null : p.id)} className="w-full flex items-center gap-4 p-5 text-left hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+              <div className="w-full flex items-center gap-4 p-5 text-left">
+                <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-controls={`program-details-${p.id}`} className="flex items-center gap-4 flex-1 min-w-0 text-left rounded-lg hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
                 <GripVertical size={16} className="text-[hsl(var(--muted-foreground))] opacity-30 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
@@ -190,14 +260,17 @@ export default function ProgramsPage() {
                     {p.categoryNames?.length > 0 && <span className="text-accent">{p.categoryNames.join(', ')}</span>}
                   </div>
                 </div>
+                </button>
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }}><Pencil size={14} /></Button>
-                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) deleteMutation.mutate(p.id); }} className="text-red-500 hover:text-red-600"><Trash2 size={14} /></Button>
-                  {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); openEdit(p); }} aria-label={`Edit ${p.programName}`}><Pencil size={14} /></Button>
+                  <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this program?')) { debugLog('[PROGRAMS] delete confirmed', { id: p.id, programCode: p.programCode }); deleteMutation.mutate(p.id); } else { debugLog('[PROGRAMS] delete cancelled', { id: p.id }); } }} className="text-red-500 hover:text-red-600" aria-label={`Delete ${p.programName}`}><Trash2 size={14} /></Button>
+                  <button onClick={() => { const next = expandedId === p.id ? null : p.id; debugLog('[PROGRAMS] expand toggle', { id: p.id, programCode: p.programCode, expanded: next !== null }); setExpandedId(next); }} aria-expanded={expandedId === p.id} aria-label={expandedId === p.id ? `Collapse ${p.programName}` : `Expand ${p.programName}`} className="rounded-md p-1 hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer">
+                    {expandedId === p.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
                 </div>
-              </button>
+              </div>
               {expandedId === p.id && (
-                <div className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
+                <div id={`program-details-${p.id}`} className="border-t border-[hsl(var(--border))] p-5 space-y-4 bg-[hsl(var(--muted)/.1)]">
                   {p.shortDescription && <p className="text-sm text-[hsl(var(--muted-foreground))]">{p.shortDescription}</p>}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div><span className="text-[hsl(var(--muted-foreground))]">Department:</span> <span className="font-medium">{p.department || '—'}</span></div>
@@ -305,8 +378,13 @@ function ProgramForm({ program, categories, existingCodes, onClose }: { program:
       const body = { ...data, fees: JSON.stringify(data.fees), admissionRequirements: JSON.stringify(data.admissionRequirements), curriculum: JSON.stringify(data.curriculum), intakes: JSON.stringify(data.intakes), accreditation: JSON.stringify(data.accreditation), documents: JSON.stringify(data.documents) };
       const editingId = program?.id;
       const saved: Program = editingId
-        ? await customFetch(`${NAP_API}/api/v1/admin/programs/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-        : await customFetch(`${NAP_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        ? await customFetch(`${ADMIN_API}/api/v1/admin/programs/${editingId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+        : await customFetch(`${ADMIN_API}/api/v1/admin/programs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      debugLog('[PROGRAMS] save accepted', {
+        mode: editingId ? 'update' : 'create',
+        id: saved.id,
+        programCode: saved.programCode,
+      });
 
       // The programme is persisted at this point. Category sync is isolated so
       // that a failure there is reported as a category problem, not a failed
@@ -317,13 +395,18 @@ function ProgramForm({ program, categories, existingCodes, onClose }: { program:
           .filter(c => c.programs.some(p => p.id === editingId) && !selectedCategoryIds.includes(c.id))
           .map(c => c.id);
         for (const catId of removals) {
-          ops.push(customFetch(`${NAP_API}/api/v1/admin/programs/${editingId}/categories/${catId}`, { method: 'DELETE' }));
+          ops.push(customFetch(`${ADMIN_API}/api/v1/admin/programs/${editingId}/categories/${catId}`, { method: 'DELETE' }));
         }
       }
       for (const catId of selectedCategoryIds) {
-        ops.push(customFetch(`${NAP_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' }));
+        ops.push(customFetch(`${ADMIN_API}/api/v1/admin/programs/${saved.id}/categories/${catId}`, { method: 'POST' }));
       }
       const settled = await Promise.allSettled(ops);
+      debugLog('[PROGRAMS] category sync complete', {
+        programId: saved.id,
+        total: settled.length,
+        failures: settled.filter(result => result.status === 'rejected').length,
+      });
       return { saved, failures: settled.filter(r => r.status === 'rejected').length, total: settled.length };
     },
     onSuccess: ({ failures, total }) => {
@@ -339,6 +422,7 @@ function ProgramForm({ program, categories, existingCodes, onClose }: { program:
       setTimeout(() => onClose(), 800);
     },
     onError: (err: unknown) => {
+      traceApiError('[PROGRAMS] save failed', err);
       setPartialWarning(null);
       const status = (err as { status?: number } | null)?.status;
       const message = (err as { message?: string } | null)?.message || 'the request did not complete';
@@ -412,7 +496,7 @@ function ProgramForm({ program, categories, existingCodes, onClose }: { program:
   const addYear = () => {
     const newYear = { year: curriculum.years.length + 1, semesters: [] as typeof curriculum.years[0]['semesters'], recessTerms: [] as typeof curriculum.years[0]['recessTerms'] };
     for (let s = 1; s <= (form.semestersPerYear || 2); s++) {
-      newYear.semesters.push({ semester: s, courses: [] });
+      newYear.semesters.push({ semester: s, courses: [], electiveGroups: [] });
     }
     setCurriculum(c => ({ ...c, years: [...c.years, newYear] }));
     set('numberOfYears', curriculum.years.length + 1);
@@ -421,7 +505,7 @@ function ProgramForm({ program, categories, existingCodes, onClose }: { program:
   const addRecessTerm = (yearIdx: number) => {
     setCurriculum(c => ({
       ...c,
-      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: [...y.recessTerms, { name: `Recess Term ${y.recessTerms.length + 1}`, courses: [] }] } : y)
+      years: c.years.map((y, yi) => yi === yearIdx ? { ...y, recessTerms: [...y.recessTerms, { name: `Recess Term ${y.recessTerms.length + 1}`, courses: [], electiveGroups: [] }] } : y)
     }));
   };
 

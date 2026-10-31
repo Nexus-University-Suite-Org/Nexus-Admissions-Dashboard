@@ -3,6 +3,7 @@ import { ThemeProvider } from 'next-themes';
 
 import App from './App';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { AuthProvider as IdentityAuthProvider } from '@/lib/nexus-auth';
 
 import './index.css';
 
@@ -12,9 +13,23 @@ createRoot(document.getElementById('root')!, {
     console.error(error, errorInfo.componentStack);
   },
 }).render(
-  <ErrorBoundary>
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+  <IdentityAuthProvider
+    config={{
+      issuer: import.meta.env.VITE_IDENTITY_ISSUER ?? 'http://localhost:9000',
+      clientId: 'nexus-admissions-dashboard',
+      redirectPath: '/admin/login',
+      defaultReturnTo: '/admin/login',
+    }}
+    fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        Checking your sign-in...
+      </div>
+    }
+  >
+    <ErrorBoundary>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <App />
-    </ThemeProvider>
-  </ErrorBoundary>,
+      </ThemeProvider>
+    </ErrorBoundary>
+  </IdentityAuthProvider>,
 );

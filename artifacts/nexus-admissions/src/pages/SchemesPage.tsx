@@ -29,8 +29,10 @@ import {
   AlertCircle,
   Scale,
 } from "lucide-react";
+import { API_BASE_URL } from "@/lib/config";
+import { debugLog, debugWarn, traceApiError } from "@/lib/debug";
 
-const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? "http://localhost:8080";
+const NAP_API = API_BASE_URL;
 
 type SchemeProgram = {
   id: number;
@@ -50,6 +52,7 @@ type AdmissionScheme = {
   capacity: number | null;
   applicationFees: string;
   serviceFee: number | null;
+  preferredStartDate: string | null;
   status: string;
   daysLeft: number | null;
   programCount: number;
@@ -165,7 +168,14 @@ export default function SchemesPage() {
   const [editing, setEditing] = useState<AdmissionScheme | null>(null);
   const [showForm, setShowForm] = useState(false);
 
-  const { data: schemes = [], isLoading, isError, error, refetch } = useQuery({
+  const {
+    data: schemes = [],
+    isLoading,
+    isError,
+    error: schemesError,
+    refetch,
+    status: schemesStatus,
+  } = useQuery({
     queryKey: ["admin-schemes"],
     queryFn: () =>
       customFetch<AdmissionScheme[]>(`${NAP_API}/api/v1/admin/schemes`),
@@ -176,13 +186,55 @@ export default function SchemesPage() {
       customFetch(`${NAP_API}/api/v1/admin/schemes/${id}`, {
         method: "DELETE",
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["admin-schemes"] }),
+    onSuccess: (_data, id) => {
+      debugLog("[SCHEMES] delete accepted", { id });
+      queryClient.invalidateQueries({ queryKey: ["admin-schemes"] });
+    },
+    onError: (err) => traceApiError("[SCHEMES] delete failed", err),
   });
 
   const filtered = schemes.filter(
     (s) => !search || s.schemeName.toLowerCase().includes(search.toLowerCase()),
   );
+
+  useEffect(() => {
+    debugLog("[SCHEMES] mounted — listing from", `${NAP_API}/api/v1/admin/schemes`);
+    return () => debugLog("[SCHEMES] unmounted");
+  }, []);
+
+  // Log once per real load, not per render.
+  const schemesState = `${schemesStatus}:${schemes.length}`;
+  const prevSchemesState = useRef(schemesState);
+  useEffect(() => {
+    if (prevSchemesState.current === schemesState) return;
+    const previous = prevSchemesState.current;
+    prevSchemesState.current = schemesState;
+    debugLog("[SCHEMES] list loaded", {
+      previous,
+      result: { status: schemesStatus, schemes: schemes.length },
+      url: `${NAP_API}/api/v1/admin/schemes`,
+    });
+  }, [schemesState, schemesStatus, schemes.length]);
+
+  useEffect(() => {
+    if (schemesError) traceApiError("[SCHEMES] list schemes", schemesError);
+  }, [schemesError]);
+
+  const schemesListState = `${search}|${filtered.length}|${schemes.length}`;
+  const prevSchemesListState = useRef(schemesListState);
+  useEffect(() => {
+    if (prevSchemesListState.current === schemesListState) return;
+    const previous = prevSchemesListState.current;
+    prevSchemesListState.current = schemesListState;
+    debugLog("[SCHEMES] search / visible set changed", {
+      previous,
+      search: search || null,
+      matched: filtered.length,
+      ofTotal: schemes.length,
+      // A search that matches nothing is usually the confusing case.
+      ...(search && filtered.length === 0 ? { note: "search matched no schemes" } : {}),
+    });
+  }, [schemesListState, search, filtered.length, schemes.length]);
 
   const fees = (raw: string) => parseJson<Record<string, number>>(raw, {});
 
@@ -212,6 +264,7 @@ export default function SchemesPage() {
         <Button
           size="sm"
           onClick={() => {
+            debugLog("[SCHEMES] open new scheme form");
             setEditing(null);
             setShowForm(true);
           }}
@@ -239,7 +292,7 @@ export default function SchemesPage() {
           <Loader2 className="animate-spin" size={24} />
         </div>
       ) : isError ? (
-        <QueryErrorState resource="admission schemes" error={error} onRetry={() => refetch()} />
+        <QueryErrorState resource="admission schemes" error={schemesError} onRetry={() => refetch()} />
       ) : filtered.length === 0 ? (
         <div className="nexus-card rounded-2xl border p-12 text-center">
           <Megaphone size={40} className="mx-auto mb-4 opacity-30" />
@@ -259,9 +312,15 @@ export default function SchemesPage() {
                 className="nexus-card rounded-2xl border overflow-hidden"
               >
                 <button
-                  onClick={() =>
-                    setExpandedId(expandedId === s.id ? null : s.id)
-                  }
+                  onClick={() => {
+                    const next = expandedId === s.id ? null : s.id;
+                    debugLog("[SCHEMES] expand toggle", {
+                      schemeId: s.id,
+                      schemeName: s.schemeName,
+                      action: next === null ? "collapse" : "expand",
+                    });
+                    setExpandedId(next);
+                  }}
                   className="w-full flex items-center gap-4 p-5 text-left hover:bg-[hsl(var(--muted)/.3)] transition-colors cursor-pointer"
                 >
                   <div
@@ -316,6 +375,11 @@ export default function SchemesPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
+                        debugLog("[SCHEMES] open edit form", {
+                          schemeId: s.id,
+                          schemeName: s.schemeName,
+                          programCount: s.programs?.length ?? 0,
+                        });
                         setEditing(s);
                         setShowForm(true);
                       }}
@@ -327,8 +391,19 @@ export default function SchemesPage() {
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Delete scheme "${s.schemeName}"?`))
-                          deleteMutation.mutate(s.id);
+                        if (!confirm(`Delete scheme "${s.schemeName}"?`)) {
+                          debugLog("[SCHEMES] delete cancelled", {
+                            schemeId: s.id,
+                            schemeName: s.schemeName,
+                          });
+                          return;
+                        }
+                        debugLog("[SCHEMES] delete requested", {
+                          schemeId: s.id,
+                          schemeName: s.schemeName,
+                          programsAttached: s.programs?.length ?? 0,
+                        });
+                        deleteMutation.mutate(s.id);
                       }}
                       className="text-red-500 hover:text-red-600"
                     >
@@ -487,6 +562,8 @@ function SchemeForm({
   const {
     data: programs = [],
     isLoading: isLoadingPrograms,
+    error: programsError,
+    status: programsStatus,
   } = useQuery({
     queryKey: ["admin-programs"],
     queryFn: () => customFetch<Program[]>(`${NAP_API}/api/v1/admin/programs`),
@@ -514,6 +591,15 @@ function SchemeForm({
       existingFees.nonEastAfrican != null
         ? String(existingFees.nonEastAfrican)
         : "",
+    preferredStartDate: (() => {
+      if (!scheme?.preferredStartDate) return "";
+      try {
+        const parsed = JSON.parse(scheme.preferredStartDate);
+        return Array.isArray(parsed) ? parsed.join(", ") : String(parsed);
+      } catch {
+        return scheme.preferredStartDate;
+      }
+    })(),
     status: scheme?.status || "OPEN",
     oLevelWeight:
       scheme?.oLevelWeight != null ? String(scheme.oLevelWeight) : String(DEFAULT_O_WEIGHT),
@@ -626,20 +712,105 @@ function SchemeForm({
 
   const set = (key: string, value: unknown) => {
     setForm((f) => ({ ...f, [key]: value }));
-    // Clear a field's error as soon as the user edits it, so stale complaints
-    // don't sit there next to a field they've already corrected.
     if (errors[key]) {
-      setErrors((e) => {
-        const next = { ...e };
+      setErrors((current) => {
+        const next = { ...current };
         delete next[key];
         return next;
       });
     }
   };
-  const toggleProgram = (id: number) =>
+
+  useEffect(() => {
+    debugLog("[SCHEMES] form mounted", {
+      mode: scheme ? "edit" : "create",
+      schemeId: scheme?.id ?? null,
+      schemeName: scheme?.schemeName ?? null,
+      preselectedPrograms: scheme?.programs?.length ?? 0,
+    });
+    return () => debugLog("[SCHEMES] form unmounted", {
+      schemeId: scheme?.id ?? null,
+    });
+  }, [scheme]);
+
+  // Log once per real load, not per render.
+  const programsState = `${programsStatus}:${programs.length}`;
+  const prevProgramsState = useRef(programsState);
+  useEffect(() => {
+    if (prevProgramsState.current === programsState) return;
+    const previous = prevProgramsState.current;
+    prevProgramsState.current = programsState;
+    debugLog("[SCHEMES] programmes loaded", {
+      previous,
+      result: { status: programsStatus, programmes: programs.length },
+      url: `${NAP_API}/api/v1/admin/programs`,
+    });
+  }, [programsState, programsStatus, programs.length]);
+
+  useEffect(() => {
+    if (programsError)
+      traceApiError("[SCHEMES] list programmes for picker", programsError);
+  }, [programsError]);
+
+  // The picker silently hides programmes that are inactive or whose
+  // programType maps to no AWARD_ORDER group - log what it is showing and
+  // what got dropped so a scheme can never be saved against a short list.
+  const groupedState = grouped
+    .map((g) => `${g.award}:${g.options.length}`)
+    .join("|");
+  const prevGroupedState = useRef(groupedState);
+  useEffect(() => {
+    if (prevGroupedState.current === groupedState) return;
+    const previous = prevGroupedState.current;
+    prevGroupedState.current = groupedState;
+
+    const groupedIds = new Set(grouped.flatMap((g) => g.options.map((o) => o.id)));
+    const hidden = programs.filter((p) => !groupedIds.has(p.id));
+    debugLog("[SCHEMES] picker grouped", {
+      previous,
+      groups: grouped.map((g) => ({
+        award: g.award,
+        label: g.label,
+        programmes: g.options.length,
+      })),
+      totalLoaded: programs.length,
+      ...(hidden.length
+        ? {
+            note: "programmes loaded but NOT selectable",
+            hidden: hidden.map((p) => ({
+              id: p.id,
+              code: p.programCode,
+              programType: p.programType,
+              status: p.status,
+              mapsTo: awardTypeForScheme(p.programType),
+              reason:
+                p.status !== "Active"
+                  ? "not Active"
+                  : !AWARD_ORDER.includes(
+                        awardTypeForScheme(p.programType) as (typeof AWARD_ORDER)[number],
+                      )
+                    ? "no award group"
+                    : "filtered",
+            })),
+          }
+        : {}),
+    });
+  }, [groupedState, grouped, programs.length]);
+
+  const toggleProgram = (id: number) => {
+    const program = programs.find((p) => p.id === id);
+    debugLog("[SCHEMES] programme toggle", {
+      id,
+      programCode: program?.programCode ?? "(not loaded)",
+      action: selectedIds.includes(id) ? "deselect" : "select",
+      selectedAfter: selectedIds.includes(id)
+        ? selectedIds.length - 1
+        : selectedIds.length + 1,
+    });
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  };
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => {
@@ -656,7 +827,16 @@ function SchemeForm({
         body,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data: unknown) => {
+      debugLog("[SCHEMES] save accepted", {
+        mode: scheme ? "edit" : "create",
+        schemeId: scheme?.id ?? null,
+        method: scheme?.id ? "PUT" : "POST",
+        url: scheme?.id
+          ? `${NAP_API}/api/v1/admin/schemes/${scheme.id}`
+          : `${NAP_API}/api/v1/admin/schemes`,
+        response: data,
+      });
       queryClient.invalidateQueries({ queryKey: ["admin-schemes"] });
       showToast(
         "success",
@@ -665,6 +845,7 @@ function SchemeForm({
       setTimeout(onClose, 700);
     },
     onError: (err: unknown) => {
+      traceApiError(`[SCHEMES] save failed (${scheme ? "PUT" : "POST"})`, err);
       // Previously this mutation had no onError at all, so a failed save just
       // stopped the spinner and said nothing. Surface whatever the server said.
       const message =
@@ -694,8 +875,23 @@ function SchemeForm({
       eastAfrican: Number(form.eastAfrican) || 0,
       nonEastAfrican: Number(form.nonEastAfrican) || 0,
     });
-    saveMutation.mutate({
-      schemeName: form.schemeName.trim(),
+
+    // Cross-check the selection against the picker: a save that silently drops
+    // programmes the admin could not see is the failure mode worth catching.
+    const selectableIds = new Set(
+      grouped.flatMap((g) => g.options.map((o) => o.id)),
+    );
+    const notSelectable = selectedIds.filter((id) => !selectableIds.has(id));
+    if (notSelectable.length) {
+      debugWarn("[SCHEMES] save includes programmes not offered by the picker", {
+        count: notSelectable.length,
+        programIds: notSelectable,
+        note: "usually means those programmes became inactive since the form opened",
+      });
+    }
+
+    const payload = {
+      schemeName: form.schemeName,
       category: form.category,
       academicYear: form.academicYear,
       intakeMonth: form.intakeMonth,
@@ -704,6 +900,14 @@ function SchemeForm({
       appCloseDate: fromLocalDT(form.appCloseDate),
       capacity: form.capacity ? Number(form.capacity) : null,
       applicationFees,
+      preferredStartDate: form.preferredStartDate
+        ? JSON.stringify(
+            form.preferredStartDate
+              .split(",")
+              .map((d) => d.trim())
+              .filter(Boolean),
+          )
+        : null,
       serviceFee: form.serviceFee ? Number(form.serviceFee) : 0,
       status: form.status,
       oLevelWeight: Number(form.oLevelWeight),
@@ -711,10 +915,41 @@ function SchemeForm({
       bestOfOLevel: Number(form.bestOfOLevel),
       passGradeThreshold: form.passGradeThreshold.trim(),
       programIds: selectedIds,
+    };
+
+    const closeAfterOpen = form.appCloseDate
+      ? new Date(form.appCloseDate)
+      : null;
+    const openAfterClose =
+      closeAfterOpen && !Number.isNaN(closeAfterOpen.getTime())
+        ? new Date(form.appOpenDate) > closeAfterOpen
+        : false;
+
+    debugLog("[SCHEMES] save requested", {
+      mode: scheme ? "edit" : "create",
+      method: scheme?.id ? "PUT" : "POST",
+      payload: {
+        ...payload,
+        description:
+          form.description.length > 80
+            ? `${form.description.slice(0, 80)}...`
+            : form.description,
+      },
+      validation: {
+        hasName: Boolean(form.schemeName),
+        programmeCount: selectedIds.length,
+        ...(openAfterClose ? { note: "appCloseDate is before appOpenDate" } : {}),
+      },
     });
+
+    saveMutation.mutate(payload);
   };
 
   const requestClose = () => {
+    debugWarn("[SCHEMES] form close requested", {
+      schemeId: scheme?.id ?? null,
+      dirty: isDirty,
+    });
     if (isDirty) {
       setShowDiscardWarning(true);
       return;
@@ -724,6 +959,36 @@ function SchemeForm({
 
   const errorFor = (key: string) =>
     submitAttempted ? errors[key] : undefined;
+
+  const matchesProgramSearch = (p: Program) => {
+    const query = programSearch.trim().toLowerCase();
+    return (
+      !query ||
+      p.programName.toLowerCase().includes(query) ||
+      p.programCode.toLowerCase().includes(query)
+    );
+  };
+  const visibleProgramCount = grouped.reduce(
+    (n, g) => n + g.options.filter(matchesProgramSearch).length,
+    0,
+  );
+
+  const programSearchState = `${programSearch}|${visibleProgramCount}`;
+  const prevProgramSearchState = useRef(programSearchState);
+  useEffect(() => {
+    if (prevProgramSearchState.current === programSearchState) return;
+    const previous = prevProgramSearchState.current;
+    prevProgramSearchState.current = programSearchState;
+    debugLog("[SCHEMES] programme search changed", {
+      previous,
+      query: programSearch || null,
+      visible: visibleProgramCount,
+      selectable: grouped.reduce((n, g) => n + g.options.length, 0),
+      ...(programSearch && visibleProgramCount === 0
+        ? { note: "no programmes match this search" }
+        : {}),
+    });
+  }, [programSearchState, programSearch, visibleProgramCount]);
 
   return (
     <div className="space-y-6 relative">
@@ -812,6 +1077,19 @@ function SchemeForm({
             required
             error={errorFor("intakeMonth")}
           />
+        </div>
+
+        <div>
+          <Field
+            label="Preferred Start Date(s)"
+            value={form.preferredStartDate}
+            onChange={(v) => set("preferredStartDate", v)}
+            placeholder="e.g. August 2026, January 2027"
+          />
+          <p className="text-[10px] text-[hsl(var(--muted-foreground))] mt-1">
+            Comma-separated. These are the start dates applicants choose from
+            when they apply to this scheme.
+          </p>
         </div>
 
         <div>
@@ -1029,14 +1307,7 @@ function SchemeForm({
                 </div>
                 <div className="max-h-48 overflow-y-auto p-2 space-y-1">
                   {g.options
-                    .filter((p) => {
-                      const query = programSearch.trim().toLowerCase();
-                      return (
-                        !query ||
-                        p.programName.toLowerCase().includes(query) ||
-                        p.programCode.toLowerCase().includes(query)
-                      );
-                    })
+                    .filter(matchesProgramSearch)
                     .map((p) => {
                       const checked = selectedIds.includes(p.id);
                       return (

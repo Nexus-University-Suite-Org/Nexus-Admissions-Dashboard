@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { QueryErrorState } from '@/components/query-error-state';
 import { Loader2, Plus, Pencil, Trash2, ArrowLeft, X, GripVertical } from 'lucide-react';
+import { NAD_API_BASE_URL } from '@/lib/config';
 
-const NAP_API = import.meta.env.VITE_NAP_API_BASE_URL ?? 'http://localhost:8080';
+const ADMIN_API = NAD_API_BASE_URL;
 
 type ProgramCategory = {
   id: number; name: string; description: string; displayOrder: number;
@@ -21,11 +22,11 @@ export default function CategoriesPage() {
 
   const { data: categories = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin-program-categories'],
-    queryFn: () => customFetch<ProgramCategory[]>(`${NAP_API}/api/v1/admin/program-categories`),
+    queryFn: () => customFetch<ProgramCategory[]>(`${ADMIN_API}/api/v1/admin/program-categories`),
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => customFetch(`${NAP_API}/api/v1/admin/program-categories/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => customFetch(`${ADMIN_API}/api/v1/admin/program-categories/${id}`, { method: 'DELETE' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-program-categories'] }),
   });
 
@@ -100,8 +101,8 @@ function CategoryForm({ category, onClose }: { category: ProgramCategory | null;
 
   const saveMutation = useMutation({
     mutationFn: (data: { name: string; description: string; displayOrder: number }) => {
-      if (category?.id) return customFetch(`${NAP_API}/api/v1/admin/program-categories/${category.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-      return customFetch(`${NAP_API}/api/v1/admin/program-categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      if (category?.id) return customFetch(`${ADMIN_API}/api/v1/admin/program-categories/${category.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      return customFetch(`${ADMIN_API}/api/v1/admin/program-categories`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-program-categories'] });

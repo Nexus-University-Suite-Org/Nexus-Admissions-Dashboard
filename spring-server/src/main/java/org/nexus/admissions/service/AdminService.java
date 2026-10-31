@@ -39,4 +39,8 @@ public class AdminService {
     public boolean existsByEmail(String email) {
         return repository.existsByEmail(email);
     }
+
+    public long count() {
+        return repository.count();
+    }
 }
