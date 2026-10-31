@@ -249,6 +249,7 @@ function EmptyState({ title, detail, action }: { title: string; detail: string; 
 
 function Shell({ children, identity }: { children: ReactNode; identity?: { fullName: string; email: string } }) {
   const [location, setLocation] = useLocation();
+  const { logout: logoutSso } = useNexusAuth();
   const [mobileNav, setMobileNav] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showBellDropdown, setShowBellDropdown] = useState(false);
@@ -268,6 +269,9 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
     localStorage.removeItem('nap_admin_token');
     queryClient.clear();
     setLocation('/admin/login');
+    void logoutSso('/admin/login').catch((error: unknown) =>
+      console.error('[SSO] admissions logout failed', error),
+    );
   };
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -330,6 +334,7 @@ function Shell({ children, identity }: { children: ReactNode; identity?: { fullN
 function AuthGate({ children }: { children: ReactNode }) {
   const [, setLocation] = useLocation();
   const token = localStorage.getItem('nap_admin_token');
+  const { status: identityStatus } = useNexusAuth();
   const me = useGetAdminMe({ query: { enabled: Boolean(token), queryKey: getGetAdminMeQueryKey(), retry: false } });
 
   // Token is never logged in full - only presence/length.
@@ -350,7 +355,7 @@ function AuthGate({ children }: { children: ReactNode }) {
       hasToken: Boolean(token),
       meStatus: me.status,
     });
-    if (!token) {
+    if (!token && identityStatus !== 'authenticated') {
       debugWarn('[AUTH-GATE] no token in localStorage -> redirecting to /admin/login');
       setLocation('/admin/login');
       return;
@@ -363,11 +368,13 @@ function AuthGate({ children }: { children: ReactNode }) {
       toast(sessionExpiredFeedback());
       setLocation('/admin/login');
     }
-  }, [me.isError, me.error, setLocation, token]);
+  }, [identityStatus, me.isError, me.error, setLocation, token]);
 
   return (
     <DebugBoundary>
-      {!token || me.status === 'pending' ? (
+      {!token && identityStatus === 'authenticated' ? (
+        <PageLoader label="Completing University SSO" />
+      ) : !token || me.status === 'pending' ? (
         <PageLoader label="Checking secure access" />
       ) : me.isError ? null : !me.data ? (
         <PageLoader label="Checking secure access" />
@@ -511,60 +518,71 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
 function LoginPage() {
   const [, setLocation] = useLocation();
   const login = useAdminLogin();
-  const { status, getAccessToken, login: loginWithSso } = useNexusAuth();
+  const { status, getAccessToken, login: loginWithSso, client } = useNexusAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [ssoError, setSsoError] = useState<string | null>(null);
   const [ssoLoading, setSsoLoading] = useState(false);
-  const ssoStarted = useRef(false);
+  const ssoSyncing = useRef(false);
+  const syncedIdentityToken = useRef<string | null>(null);
 
   const [dbgOn, setDbgOn] = useState(() => debugEnabled());
 
   useEffect(() => {
-    if (status !== 'authenticated' || ssoStarted.current) return;
-    ssoStarted.current = true;
     let active = true;
 
-    void (async () => {
+    const synchronizeSsoSession = async () => {
+      if (status !== 'authenticated' || ssoSyncing.current) return;
       setSsoLoading(true);
-      setSsoError(null);
-      const identityToken = await getAccessToken();
-      if (!identityToken) throw new Error('No active Nexus Identity access token');
-      const response = await fetch(`${NAD_API}/api/v1/admin/auth/sso`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${identityToken}` },
-      });
-      const session = await response.json().catch(() => null) as
-        | { token?: string; detail?: string; message?: string }
-        | null;
-      if (!response.ok || !session?.token) {
-        throw new Error(
-          session?.detail ?? session?.message ?? `SSO failed (HTTP ${response.status})`,
-        );
+      ssoSyncing.current = true;
+      try {
+        const identityToken = await getAccessToken();
+        if (!identityToken || identityToken === syncedIdentityToken.current) return;
+        const response = await fetch(`${NAD_API}/api/v1/admin/auth/sso`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${identityToken}` },
+        });
+        const session = await response.json().catch(() => null) as
+          | { token?: string; detail?: string; message?: string }
+          | null;
+        if (!response.ok || !session?.token) {
+          throw new Error(
+            session?.detail ?? session?.message ?? `SSO failed (HTTP ${response.status})`,
+          );
+        }
+        if (!active) return;
+
+        syncedIdentityToken.current = identityToken;
+        setSsoError(null);
+        localStorage.setItem('nap_admin_token', session.token);
+        queryClient.clear();
+        toast({
+          title: 'Signed in',
+          description: 'Welcome back to the admissions workspace.',
+        });
+        setLocation('/admin');
+      } catch (error: unknown) {
+        if (!active) return;
+        setSsoError(error instanceof Error ? error.message : String(error));
+        console.error('[SSO] admissions sign-in failed', error);
+      } finally {
+        ssoSyncing.current = false;
+        if (active) setSsoLoading(false);
       }
-      if (!active) return;
+    };
 
-      localStorage.setItem('nap_admin_token', session.token);
-      queryClient.clear();
-      toast({
-        title: 'Signed in',
-        description: 'Welcome back to the admissions workspace.',
-      });
-      setLocation('/admin');
-    })().catch((error: unknown) => {
-      if (!active) return;
-      const message = error instanceof Error ? error.message : String(error);
-      setSsoError(message);
-      console.error('[SSO] admissions sign-in failed', error);
-    }).finally(() => {
-      if (active) setSsoLoading(false);
-    });
+    const runSynchronization = () => {
+      void synchronizeSsoSession();
+    };
 
+    runSynchronization();
+    const unsubscribe = client.subscribe(runSynchronization);
     return () => {
       active = false;
+      unsubscribe();
     };
-  }, [getAccessToken, setLocation, status]);
+  }, [client, getAccessToken, setLocation, status]);
 
   useEffect(() => {
     logConfig(NAP_API, NAD_API);
@@ -663,11 +681,21 @@ function LoginPage() {
            variant="outline"
            disabled={ssoLoading}
            className="h-12 w-full rounded-xl"
-           onClick={() => void loginWithSso('/admin/login')}
+           onClick={() => void loginWithSso('/admin/login').catch((error: unknown) => {
+             const message = error instanceof Error ? error.message : String(error);
+             setSsoError(message);
+             console.error('[SSO] could not start admissions sign-in', error);
+           })}
          >
-           {ssoLoading ? <><Loader2 size={16} className="animate-spin" /> Verifying SSO</> : 'Sign in with University SSO'}
+           {ssoLoading
+             ? <><Loader2 size={16} className="animate-spin" /> Verifying SSO</>
+             : 'Sign in with University SSO'}
          </Button>
-         {ssoError && <div role="alert" className="mt-3 rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">{ssoError}</div>}
+         {ssoError && (
+           <div role="alert" className="mt-3 rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">
+             {ssoError}
+           </div>
+         )}
          </div></div>
         <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
           <div className="flex items-center justify-between gap-3">

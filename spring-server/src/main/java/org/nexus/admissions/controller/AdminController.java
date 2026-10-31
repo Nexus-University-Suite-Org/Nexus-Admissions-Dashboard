@@ -13,6 +13,7 @@ import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -49,7 +50,7 @@ public class AdminController {
     public ResponseEntity<AdminLoginResponse> sso(
             @RequestHeader("Authorization") String authorization) {
         return ResponseEntity.ok(adminFacade.loginWithSso(
-                    identityTokenVerifier.verifiedAdminEmail(authorization)));
+                identityTokenVerifier.verifiedAdminEmail(authorization)));
     }
 
     @GetMapping("/auth/me")
