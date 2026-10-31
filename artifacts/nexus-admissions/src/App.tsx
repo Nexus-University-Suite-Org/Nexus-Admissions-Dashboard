@@ -72,6 +72,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import DebugBoundary from '@/components/DebugBoundary';
 import { API_BASE_URL, NAD_API_BASE_URL } from '@/lib/config';
+import { useNexusAuth } from '@/lib/nexus-auth';
 import { loginFailureFeedback, sessionExpiredFeedback } from '@/lib/authFeedback';
 import { toast } from '@/hooks/use-toast';
 import { debugLog, debugWarn, installFetchTracer, logConfig, setDebug, traceApiError, traceRequest, debugEnabled } from '@/lib/debug';
@@ -510,11 +511,60 @@ function PartnerForm({ partner, onClose }: { partner: Record<string, string> | n
 function LoginPage() {
   const [, setLocation] = useLocation();
   const login = useAdminLogin();
+  const { status, getAccessToken, login: loginWithSso } = useNexusAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [ssoError, setSsoError] = useState<string | null>(null);
+  const [ssoLoading, setSsoLoading] = useState(false);
+  const ssoStarted = useRef(false);
 
   const [dbgOn, setDbgOn] = useState(() => debugEnabled());
+
+  useEffect(() => {
+    if (status !== 'authenticated' || ssoStarted.current) return;
+    ssoStarted.current = true;
+    let active = true;
+
+    void (async () => {
+      setSsoLoading(true);
+      setSsoError(null);
+      const identityToken = await getAccessToken();
+      if (!identityToken) throw new Error('No active Nexus Identity access token');
+      const response = await fetch(`${NAD_API}/api/v1/admin/auth/sso`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${identityToken}` },
+      });
+      const session = await response.json().catch(() => null) as
+        | { token?: string; detail?: string; message?: string }
+        | null;
+      if (!response.ok || !session?.token) {
+        throw new Error(
+          session?.detail ?? session?.message ?? `SSO failed (HTTP ${response.status})`,
+        );
+      }
+      if (!active) return;
+
+      localStorage.setItem('nap_admin_token', session.token);
+      queryClient.clear();
+      toast({
+        title: 'Signed in',
+        description: 'Welcome back to the admissions workspace.',
+      });
+      setLocation('/admin');
+    })().catch((error: unknown) => {
+      if (!active) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setSsoError(message);
+      console.error('[SSO] admissions sign-in failed', error);
+    }).finally(() => {
+      if (active) setSsoLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [getAccessToken, setLocation, status]);
 
   useEffect(() => {
     logConfig(NAP_API, NAD_API);
@@ -607,6 +657,17 @@ function LoginPage() {
           {login.isError && <div data-testid="status-login-error" className="rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">{loginFailureFeedback(login.error).description}</div>}
           <Button data-testid="button-sign-in" type="submit" disabled={login.isPending || !email || !password} className="h-12 w-full rounded-xl bg-[hsl(var(--primary))] text-sm font-bold">{login.isPending ? <><Loader2 size={16} className="animate-spin" /> Verifying access</> : <>Enter workspace <ArrowRight size={16} /></>}</Button>
          </form>
+         <div className="my-4 flex items-center gap-3 text-[10px] uppercase tracking-[.2em] text-[hsl(var(--muted-foreground))]"><span className="h-px flex-1 bg-[hsl(var(--border))]" />or<span className="h-px flex-1 bg-[hsl(var(--border))]" /></div>
+         <Button
+           type="button"
+           variant="outline"
+           disabled={ssoLoading}
+           className="h-12 w-full rounded-xl"
+           onClick={() => void loginWithSso('/admin/login')}
+         >
+           {ssoLoading ? <><Loader2 size={16} className="animate-spin" /> Verifying SSO</> : 'Sign in with University SSO'}
+         </Button>
+         {ssoError && <div role="alert" className="mt-3 rounded-xl border border-[hsl(var(--destructive)/.25)] bg-[hsl(var(--destructive)/.08)] px-4 py-3 text-xs leading-5 text-[hsl(var(--destructive))]">{ssoError}</div>}
          </div></div>
         <div className="mt-6 rounded-xl border border-dashed border-[hsl(var(--border))] px-4 py-3 text-[10px] leading-5 text-[hsl(var(--muted-foreground))]">
           <div className="flex items-center justify-between gap-3">

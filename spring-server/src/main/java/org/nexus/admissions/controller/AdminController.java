@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import org.nexus.admissions.configuration.JwtAuthFilter;
-import org.nexus.admissions.configuration.KeycloakTokenVerifier;
+import org.nexus.admissions.configuration.NexusIdentityTokenVerifier;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
 import org.nexus.admissions.dto.AdminUpdateRequest;
@@ -32,12 +32,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
     private final AdminFacade adminFacade;
-    private final KeycloakTokenVerifier keycloakTokenVerifier;
+    private final NexusIdentityTokenVerifier identityTokenVerifier;
 
     public AdminController(AdminFacade adminFacade,
-                           KeycloakTokenVerifier keycloakTokenVerifier) {
+                           NexusIdentityTokenVerifier identityTokenVerifier) {
         this.adminFacade = adminFacade;
-        this.keycloakTokenVerifier = keycloakTokenVerifier;
+        this.identityTokenVerifier = identityTokenVerifier;
     }
 
     @PostMapping("/auth/login")
@@ -49,7 +49,7 @@ public class AdminController {
     public ResponseEntity<AdminLoginResponse> sso(
             @RequestHeader("Authorization") String authorization) {
         return ResponseEntity.ok(adminFacade.loginWithSso(
-                keycloakTokenVerifier.verifiedEmail(authorization)));
+                    identityTokenVerifier.verifiedAdminEmail(authorization)));
     }
 
     @GetMapping("/auth/me")
