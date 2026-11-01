@@ -118,6 +118,26 @@ public class NapBackendClient {
             String intakeYear
     ) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record NapAssessment(
+            String programmeCode,
+            String modelRecommendation,
+            String decisionOfRecord,
+            Double admissionIndex,
+            Double cutoffIndex,
+            Double oLevelIndex,
+            Double aLevelIndex,
+            String scoringMode,
+            String modelVersion,
+            String dataQuality,
+            List<Map<String, Object>> criteria,
+            List<Map<String, Object>> gates,
+            List<String> reasons,
+            String humanOutcome,
+            Boolean overrodeEngine,
+            String evaluatedAt
+    ) {}
+
     public List<NapProgram> fetchProgrammes() {
         try {
             HttpRequest request = HttpRequest.newBuilder()
@@ -210,6 +230,27 @@ public class NapBackendClient {
             throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch application from NAP-Backend: " + e.getMessage(), e);
+        }
+    }
+
+    public List<NapAssessment> fetchAdmissionAssessments(Long id) {
+        try {
+            String token = currentAdminToken();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(properties.baseUrl() + "/api/v1/admin/applications/" + id + "/assessment"))
+                    .header("Accept", "application/json")
+                    .header("Authorization", "Bearer " + token)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new UpstreamServiceException("NAP-Backend returned " + response.statusCode());
+            }
+            return List.of(objectMapper.readValue(response.body(), NapAssessment[].class));
+        } catch (UpstreamServiceException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch admission assessments: " + e.getMessage(), e);
         }
     }
 

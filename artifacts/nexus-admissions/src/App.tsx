@@ -853,28 +853,7 @@ function ApplicationsPage() {
 }
 
 function ApplicationRow({ app, onOpen }: { app: Application; onOpen: () => void }) {
-  const queryClient = useQueryClient();
-  const review = useReviewAdminApplication();
-  const canReview = app.status === 'DRAFT' || app.status === 'SUBMITTED';
-  const handleQuickReview = (status: 'admitted' | 'rejected', e: React.MouseEvent) => {
-    e.stopPropagation();
-    const label = status === 'admitted' ? 'admit' : 'reject';
-    debugLog('[APPS] quick review requested', { id: app.id, decision: status, applicant: `${app.firstName} ${app.lastName}`, currentStatus: app.status });
-    if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) {
-      debugLog('[APPS] quick review cancelled by user', { id: app.id, decision: status });
-      return;
-    }
-    review.mutate({ id: app.id, data: { reviewStatus: status as ApplicationReviewInputReviewStatus, notes: '' } }, {
-      onSuccess: () => {
-        debugLog('[APPS] quick review succeeded', { id: app.id, decision: status });
-        queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) });
-      },
-      onError: (err) => traceApiError(`[APPS] quick review ${status} (id ${app.id})`, err),
-    });
-  };
-  return <tr data-testid={`row-application-${app.id}`} className="group transition-colors hover:bg-[hsl(var(--muted)/.4)]"><td className="px-6 py-4"><button data-testid={`button-open-application-${app.id}`} onClick={onOpen} className="flex items-center gap-3 text-left"><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div><p className="text-sm font-semibold group-hover:text-[hsl(var(--primary))]">{app.firstName} {app.lastName}</p><p className="nexus-mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{app.prn}</p></div></button></td><td className="max-w-[220px] truncate px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{app.programChoice1 || 'Not selected'}<br /><span className="text-[10px]">{app.studyMode || 'Study mode not set'}</span></td><td className="px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{formatDate(app.submittedAt || app.createdAt)}</td><td className="px-4 py-4"><StatusPill status={app.status} /></td><td className="px-6 py-4 text-right"><div className="flex items-center justify-end gap-1">{canReview && review.isPending !== true && <><button data-testid={`button-quick-admit-${app.id}`} onClick={(e) => handleQuickReview('admitted', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(160_43%_40%)] hover:bg-[hsl(160_43%_40%/.1)]"><CheckCircle2 size={13} /> Admit</button><button data-testid={`button-quick-reject-${app.id}`} onClick={(e) => handleQuickReview('rejected', e)} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/.1)]"><XCircle size={13} /> Reject</button></>}<button data-testid={`button-view-application-${app.id}`} onClick={onOpen} className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--primary))]"><ExternalLink size={16} /></button></div></td></tr>;
+  return <tr data-testid={`row-application-${app.id}`} className="group transition-colors hover:bg-[hsl(var(--muted)/.4)]"><td className="px-6 py-4"><button data-testid={`button-open-application-${app.id}`} onClick={onOpen} className="flex items-center gap-3 text-left"><div className="flex size-9 items-center justify-center rounded-full bg-[hsl(var(--primary)/.1)] text-xs font-bold text-[hsl(var(--primary))]">{initials(`${app.firstName} ${app.lastName}`)}</div><div><p className="text-sm font-semibold group-hover:text-[hsl(var(--primary))]">{app.firstName} {app.lastName}</p><p className="nexus-mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{app.prn}</p></div></button></td><td className="max-w-[220px] truncate px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{app.programChoice1 || 'Not selected'}<br /><span className="text-[10px]">{app.studyMode || 'Study mode not set'}</span></td><td className="px-4 py-4 text-xs text-[hsl(var(--muted-foreground))]">{formatDate(app.submittedAt || app.createdAt)}</td><td className="px-4 py-4"><StatusPill status={app.status} /></td><td className="px-6 py-4 text-right"><button data-testid={`button-view-application-${app.id}`} onClick={onOpen} aria-label={`Review ${app.firstName} ${app.lastName}`} className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--primary))]"><ExternalLink size={16} /></button></td></tr>;
 }
 
 function Pagination({ page, totalPages, size, total, onPage, onSize }: { page: number; totalPages: number; size: number; total: number; onPage: (page: number) => void; onSize: (size: number) => void }) {
@@ -966,82 +945,64 @@ function ReviewPanel({ app }: { app: Application }) {
   const [notice, setNotice] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const submitReview = () => {
+    if (!notes.trim()) {
+      setErrorMsg('Add a reviewer note before recording a decision.');
+      return;
+    }
     const label = choice === 'admitted' ? 'admit' : choice === 'waitlisted' ? 'waitlist' : 'reject';
     if (!window.confirm(`Confirm decision to ${label} ${app.firstName} ${app.lastName}'s application?`)) return;
-    const data = { reviewStatus: ApplicationReviewInputReviewStatus[choice], notes };
+    const data = { reviewStatus: ApplicationReviewInputReviewStatus[choice], notes: notes.trim() };
     debugLog('[APPS] review submitted', { id: app.id, choice, applicant: `${app.firstName} ${app.lastName}`, noteLength: notes.length });
     setErrorMsg('');
-    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { debugLog('[APPS] review accepted', { id: app.id, choice, newStatus: resp?.status ?? null }); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { traceApiError(`[APPS] review ${choice} rejected (id ${app.id})`, err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
+    review.mutate({ id: app.id, data }, { onSuccess: (resp) => { debugLog('[APPS] review accepted', { id: app.id, choice, newStatus: resp?.status ?? null }); setNotice('Decision recorded successfully.'); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationQueryKey(app.id) }); queryClient.invalidateQueries({ queryKey: ['admin-application-assessment', app.id] }); queryClient.invalidateQueries({ queryKey: getGetAdminApplicationsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminDashboardStatsQueryKey() }); queryClient.invalidateQueries({ queryKey: getGetAdminRecentApplicationsQueryKey({ limit: 6 }) }); }, onError: (err: any) => { traceApiError(`[APPS] review ${choice} rejected (id ${app.id})`, err); const detail = err?.response?.data?.message || err?.data?.message || err?.response?.data?.error || err?.message || String(err); setErrorMsg(detail); } });
   };
-  if (app.status !== ApplicationStatus.SUBMITTED && app.status !== ApplicationStatus.DRAFT) return <div className="nexus-card border-l-4 border-l-[hsl(var(--primary))] p-5"><div className="flex gap-3"><FileCheck2 size={18} className="mt-0.5 text-[hsl(var(--primary))]" /><div><p className="text-sm font-semibold">This application has been reviewed</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">The decision is <strong className="capitalize text-[hsl(var(--foreground))]">{statusLabel(app.status)}</strong>. Review controls are available only for draft and submitted records.</p>{app.reviewerNotes && <blockquote className="mt-4 border-l-2 border-[hsl(var(--border))] pl-3 text-sm italic text-[hsl(var(--muted-foreground))]">“{app.reviewerNotes}”</blockquote>}</div></div></div>;
-  return <div className="nexus-card overflow-hidden border-[hsl(var(--accent)/.6)]"><div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--accent)/.12)] px-5 py-4"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(31_59%_28%)]" /><p className="text-sm font-bold">Record a decision</p></div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Choose one outcome and leave a clear audit note.</p></div><div className="space-y-5 p-5"><div className="grid grid-cols-3 gap-2">{(['admitted', 'waitlisted', 'rejected'] as const).map((option) => <button data-testid={`button-review-${option}`} key={option} onClick={() => setChoice(option)} className={`rounded-xl border px-2 py-3 text-xs font-semibold capitalize transition-all ${choice === option ? option === 'rejected' ? 'border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/.08)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)]'}`}>{option}</button>)}</div><label className="block"><span className="mb-2 block text-xs font-semibold">Reviewer note <span className="font-normal text-[hsl(var(--muted-foreground))]">(recommended)</span></span><textarea data-testid="textarea-review-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Add context for the decision…" className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none transition-shadow focus:ring-1 focus:ring-[hsl(var(--ring))]" /></label>{notice && <div data-testid="status-review-success" className="flex items-center gap-2 rounded-lg bg-[hsl(160_35%_85%)] px-3 py-2 text-xs text-[hsl(160_43%_25%)]"><CheckCircle2 size={14} /> {notice}</div>}{errorMsg && <div data-testid="status-review-error" className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">Error: {errorMsg}</div>}{review.isError && !errorMsg && <div className="text-xs text-[hsl(var(--destructive))]">We couldn't save this decision. Please try again.</div>}<Button data-testid="button-submit-review" onClick={submitReview} disabled={review.isPending} className="h-11 w-full rounded-xl font-bold">{review.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving decision</> : <><Check size={15} /> Confirm decision</>}</Button></div></div>;
+  if (app.status !== ApplicationStatus.SUBMITTED) return <div className="nexus-card border-l-4 border-l-[hsl(var(--primary))] p-5"><div className="flex gap-3"><FileCheck2 size={18} className="mt-0.5 text-[hsl(var(--primary))]" /><div><p className="text-sm font-semibold">{app.status === ApplicationStatus.DRAFT ? 'Application is still a draft' : 'This application has been reviewed'}</p><p className="mt-1 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{app.status === ApplicationStatus.DRAFT ? 'The applicant must submit the application before staff can record a decision.' : <>The decision is <strong className="capitalize text-[hsl(var(--foreground))]">{statusLabel(app.status)}</strong>.</>}</p>{app.reviewerNotes && <blockquote className="mt-4 border-l-2 border-[hsl(var(--border))] pl-3 text-sm italic text-[hsl(var(--muted-foreground))]">“{app.reviewerNotes}”</blockquote>}</div></div></div>;
+  return <div className="nexus-card overflow-hidden border-[hsl(var(--accent)/.6)]"><div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--accent)/.12)] px-5 py-4"><div className="flex items-center gap-2"><ShieldCheck size={16} className="text-[hsl(31_59%_28%)]" /><p className="text-sm font-bold">Record a decision</p></div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Choose one outcome and leave a clear audit note.</p></div><div className="space-y-5 p-5"><div className="grid grid-cols-3 gap-2">{(['admitted', 'waitlisted', 'rejected'] as const).map((option) => <button data-testid={`button-review-${option}`} key={option} onClick={() => setChoice(option)} className={`rounded-xl border px-2 py-3 text-xs font-semibold capitalize transition-all ${choice === option ? option === 'rejected' ? 'border-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/.08)] text-[hsl(var(--destructive))]' : 'border-[hsl(var(--primary))] bg-[hsl(var(--primary)/.08)] text-[hsl(var(--primary))]' : 'border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary)/.5)]'}`}>{option}</button>)}</div><label className="block"><span className="mb-2 block text-xs font-semibold">Reviewer note <span className="font-normal text-[hsl(var(--muted-foreground))]">(required)</span></span><textarea data-testid="textarea-review-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Add context for the decision…" className="w-full resize-none rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none transition-shadow focus:ring-1 focus:ring-[hsl(var(--ring))]" /></label>{notice && <div data-testid="status-review-success" className="flex items-center gap-2 rounded-lg bg-[hsl(160_35%_85%)] px-3 py-2 text-xs text-[hsl(160_43%_25%)]"><CheckCircle2 size={14} /> {notice}</div>}{errorMsg && <div data-testid="status-review-error" className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-xs text-[hsl(var(--destructive))]">Error: {errorMsg}</div>}{review.isError && !errorMsg && <div className="text-xs text-[hsl(var(--destructive))]">We couldn't save this decision. Please try again.</div>}<Button data-testid="button-submit-review" onClick={submitReview} disabled={review.isPending} className="h-11 w-full rounded-xl font-bold">{review.isPending ? <><Loader2 size={15} className="animate-spin" /> Saving decision</> : <><Check size={15} /> Confirm decision</>}</Button></div></div>;
 }
 
-interface QualificationEntry {
-  programmeCode: string;
-  programmeName: string;
-  qualified: boolean;
-  totalScore: number;
-  adjustedScore?: number;
-  genderBonus?: boolean;
-  cutoffScore: number;
-  oLevelScore: number;
-  aLevelScore: number;
-  reason: string;
+interface AdmissionAssessment {
+  programmeCode: string | null;
+  modelRecommendation: 'ADMIT' | 'REVIEW' | 'REJECT' | null;
+  decisionOfRecord: string;
+  admissionIndex: number | null;
+  cutoffIndex: number | null;
+  oLevelIndex: number | null;
+  aLevelIndex: number | null;
+  scoringMode: string | null;
+  modelVersion: string | null;
+  dataQuality: string | null;
+  criteria: Array<{ code: string; label: string; weight: number; weightedPoints: number; note: string | null }>;
+  gates: Array<{ code: string; label: string; category: string; passed: boolean; detail: string | null }>;
+  reasons: string[];
+  humanOutcome: string | null;
+  overrodeEngine: boolean | null;
+  evaluatedAt: string | null;
 }
 
-function SuggestedProgrammeCard({ app }: { app: Application }) {
-  const suggestion = useMemo(() => {
-    if (!app.qualificationResults) return null;
-    try {
-      const results = JSON.parse(app.qualificationResults) as QualificationEntry[];
-      const qualified = results.filter((r) => r.qualified);
-      if (!qualified.length) return null;
-      return qualified.sort((a, b) => (b.adjustedScore ?? b.totalScore) - (a.adjustedScore ?? a.totalScore))[0];
-    } catch {
-      return null;
-    }
-  }, [app.qualificationResults]);
+function AdmissionAssessmentPanel({ applicationId }: { applicationId: number }) {
+  const assessmentQuery = useQuery({
+    queryKey: ['admin-application-assessment', applicationId],
+    queryFn: () => customFetch<AdmissionAssessment[]>(`${NAD_API}/api/v1/admin/applications/${applicationId}/assessment`),
+  });
 
-  if (!suggestion) return null;
-
-  const score = suggestion.adjustedScore ?? suggestion.totalScore;
-  const hasBonus = suggestion.genderBonus === true;
-
-  return (
-    <div className="nexus-card overflow-hidden border-[hsl(280_65%_55%)/.3]">
-      <div className="border-b border-[hsl(var(--border))] bg-[hsl(280_65%_55%)/.08] px-5 py-4">
-        <div className="flex items-center gap-2">
-          <Sparkles size={16} className="text-[hsl(280_65%_55%)]" />
-          <p className="text-sm font-bold">Suggested Programme</p>
-        </div>
-        <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">AI-recommended based on marks &amp; gender bonus</p>
-      </div>
-      <div className="space-y-3 p-5">
-        <div>
-          <p className="text-sm font-bold text-[hsl(var(--foreground))]">{suggestion.programmeName || suggestion.programmeCode}</p>
-          <p className="mt-0.5 text-[11px] text-[hsl(var(--muted-foreground))]">{suggestion.programmeCode}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex-1 rounded-lg bg-[hsl(var(--muted)/.5)] px-3 py-2 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Score</p>
-            <p className="mt-0.5 text-lg font-bold text-[hsl(var(--foreground))]">{score.toFixed(1)}</p>
-          </div>
-          <div className="flex-1 rounded-lg bg-[hsl(var(--muted)/.5)] px-3 py-2 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Cutoff</p>
-            <p className="mt-0.5 text-lg font-bold text-[hsl(var(--foreground))]">{suggestion.cutoffScore.toFixed(1)}</p>
-          </div>
-        </div>
-        {hasBonus && (
-          <div className="flex items-center gap-1.5 rounded-full bg-[hsl(280_65%_55%)/.1] px-3 py-1.5">
-            <Sparkles size={12} className="text-[hsl(280_65%_55%)]" />
-            <span className="text-[11px] font-semibold text-[hsl(280_65%_55%)]">+1.5 female applicant bonus applied</span>
-          </div>
-        )}
-        <p className="text-[11px] leading-5 text-[hsl(var(--muted-foreground))]">{suggestion.reason}</p>
-      </div>
+  return <section className="nexus-card overflow-hidden" data-testid="panel-admission-assessment">
+    <div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/.35)] px-5 py-4">
+      <div className="flex items-center gap-2"><ClipboardList size={16} className="text-[hsl(var(--primary))]" /><h2 className="text-sm font-bold">Admissions assessment</h2></div>
+      <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Explainable rule-based guidance for staff review—not an admission decision.</p>
     </div>
-  );
+    {assessmentQuery.isLoading ? <div className="space-y-3 p-5"><div className="h-5 animate-pulse rounded bg-[hsl(var(--muted))]" /><div className="h-16 animate-pulse rounded bg-[hsl(var(--muted))]" /></div>
+      : assessmentQuery.isError ? <div className="space-y-3 p-5"><p className="text-xs text-[hsl(var(--destructive))]">The assessment could not be loaded.</p><Button variant="outline" size="sm" onClick={() => assessmentQuery.refetch()}>Retry</Button></div>
+      : !assessmentQuery.data?.length ? <p className="p-5 text-xs leading-5 text-[hsl(var(--muted-foreground))]">{'This application has no recorded scoring assessment. Drafts are assessed after submission; older submissions may need staff review without a model recommendation.'}</p>
+      : <div className="divide-y divide-[hsl(var(--border))]">{assessmentQuery.data.map((assessment, index) => <article key={`${assessment.programmeCode}-${index}`} className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold">{assessment.programmeCode || 'Selected programme'}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">Rules {assessment.modelVersion || 'version unavailable'} · {assessment.scoringMode || 'mode unavailable'}</p></div><span className="rounded-full bg-[hsl(var(--accent)/.2)] px-2.5 py-1 text-[10px] font-bold uppercase">{assessment.modelRecommendation || 'Unavailable'}</span></div>
+        <div className="grid grid-cols-2 gap-2 text-center"><div className="rounded-lg bg-[hsl(var(--muted)/.45)] px-3 py-2"><p className="text-[10px] uppercase text-[hsl(var(--muted-foreground))]">Model index</p><p className="mt-1 text-lg font-bold">{assessment.admissionIndex?.toFixed(1) ?? '—'}</p></div><div className="rounded-lg bg-[hsl(var(--muted)/.45)] px-3 py-2"><p className="text-[10px] uppercase text-[hsl(var(--muted-foreground))]">Programme cutoff</p><p className="mt-1 text-lg font-bold">{assessment.cutoffIndex?.toFixed(1) ?? 'Not set'}</p></div></div>
+        <p className="text-[11px] leading-5 text-[hsl(var(--muted-foreground))]">Decision on record: <strong className="text-[hsl(var(--foreground))]">{assessment.decisionOfRecord}</strong>. This is separate from the model recommendation.</p>
+        {assessment.dataQuality && assessment.dataQuality !== 'CLEAN' && <p className="rounded-lg bg-[hsl(var(--destructive)/.08)] px-3 py-2 text-[11px] text-[hsl(var(--destructive))]">Data quality requires review: {assessment.dataQuality}</p>}
+        {assessment.reasons.length > 0 && <ul className="space-y-1 text-[11px] leading-5 text-[hsl(var(--muted-foreground))]">{assessment.reasons.map((reason, reasonIndex) => <li key={reasonIndex}>• {reason}</li>)}</ul>}
+        {assessment.gates.some((gate) => !gate.passed) && <div className="space-y-2"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Checks requiring attention</p>{assessment.gates.filter((gate) => !gate.passed).map((gate) => <div key={gate.code} className="rounded-lg border border-[hsl(var(--accent)/.5)] px-3 py-2"><p className="text-xs font-semibold">{gate.label}</p><p className="mt-1 text-[11px] leading-4 text-[hsl(var(--muted-foreground))]">{gate.detail}</p></div>)}</div>}
+        {assessment.criteria.length > 0 && <details><summary className="cursor-pointer text-xs font-semibold text-[hsl(var(--primary))]">Show scoring breakdown</summary><div className="mt-3 space-y-2">{assessment.criteria.map((criterion) => <div key={criterion.code} className="flex items-start justify-between gap-3 text-[11px]"><div><p className="font-medium">{criterion.label}</p><p className="text-[hsl(var(--muted-foreground))]">{criterion.note}</p></div><span className="nexus-mono shrink-0">{criterion.weightedPoints.toFixed(1)}</span></div>)}</div></details>}
+      </article>)}</div>}
+  </section>;
 }
 
 function ApplicationDetailPage() {
@@ -1082,7 +1043,7 @@ function ApplicationDetailPage() {
 
       <section className="nexus-card p-6 md:p-7"><div className="mb-6 flex items-center gap-2"><FileCheck2 size={17} className="text-[hsl(var(--primary))]" /><h2 className="text-base font-bold">Payment & extras</h2></div><div className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-3"><DetailField label="Fee paid" value={`${app.feeCurrency || ''} ${app.feePaid ?? 0}`} mono /><DetailField label="Fee required" value={`${app.feeCurrency || ''} ${app.feeRequired ?? 0}`} mono /><DetailField label="Application fee paid" value={boolIcon(app.applicationFeePaid)} /><DetailField label="Payment method" value={app.paymentMethod} /><DetailField label="Payment reference" value={app.paymentReference} /><DetailField label="Terms accepted" value={boolIcon(app.termsAccepted)} /><DetailField label="Additional information" value={app.extras} /></div></section>
 
-    </div><aside className="space-y-6 xl:sticky xl:top-24 xl:self-start"><ReviewPanel app={app} /><SuggestedProgrammeCard app={app} />{app.assignedProgramme && <div className="nexus-card border-l-4 border-l-[hsl(160_43%_40%)] p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Assigned programme</p><p className="mt-2 text-sm font-semibold">{app.assignedProgramme}</p>{app.totalWeightScore != null && <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Weight score: {app.totalWeightScore.toFixed(1)}</p>}</div>}<div className="nexus-card p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Record trail</p><div className="mt-5 space-y-4 border-l border-[hsl(var(--border))] pl-4"><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--primary))]" /><p className="text-xs font-semibold">Application created</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.createdAt, true)}</p></div><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--accent))]" /><p className="text-xs font-semibold">Last updated</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.updatedAt, true)}</p></div>{app.reviewedAt && <div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(160_43%_40%)]" /><p className="text-xs font-semibold">Decision recorded</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.reviewedAt, true)}</p></div>}</div></div></aside></div>
+    </div><aside className="space-y-6 xl:sticky xl:top-24 xl:self-start"><ReviewPanel app={app} /><AdmissionAssessmentPanel applicationId={app.id} />{app.assignedProgramme && <div className="nexus-card border-l-4 border-l-[hsl(160_43%_40%)] p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Assigned programme</p><p className="mt-2 text-sm font-semibold">{app.assignedProgramme}</p>{app.totalWeightScore != null && <p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">Weight score: {app.totalWeightScore.toFixed(1)}</p>}</div>}<div className="nexus-card p-5"><p className="nexus-kicker text-[hsl(var(--muted-foreground))]">Record trail</p><div className="mt-5 space-y-4 border-l border-[hsl(var(--border))] pl-4"><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--primary))]" /><p className="text-xs font-semibold">Application created</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.createdAt, true)}</p></div><div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(var(--accent))]" /><p className="text-xs font-semibold">Last updated</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.updatedAt, true)}</p></div>{app.reviewedAt && <div className="relative"><span className="absolute -left-[21px] top-0.5 size-2.5 rounded-full bg-[hsl(160_43%_40%)]" /><p className="text-xs font-semibold">Decision recorded</p><p className="mt-1 text-[11px] text-[hsl(var(--muted-foreground))]">{formatDate(app.reviewedAt, true)}</p></div>}</div></div></aside></div>
   </div>;
 }
 

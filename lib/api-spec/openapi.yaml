@@ -176,6 +176,34 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/admin/applications/{id}/assessment:
+    get:
+      operationId: getAdminApplicationAssessment
+      tags: [admin-applications]
+      summary: Get the explainable scoring assessment for an application
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Assessments recorded when the application was submitted
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdmissionAssessment"
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/admin/applications/{id}/review:
     put:
       operationId: reviewAdminApplication
@@ -302,13 +330,40 @@ components:
         phoneNumber: { type: string }
         gender: { type: string }
         dateOfBirth: { type: string }
+        maritalStatus: { type: string }
         nationality: { type: string }
+        address: { type: string }
+        postalAddress: { type: string }
+        city: { type: string }
+        postalCode: { type: string }
+        country: { type: string }
         district: { type: string }
         subcounty: { type: string }
         village: { type: string }
+        hasNationalIdOrPassport: { type: string }
+        birthCertificateOrNationalIdDetails: { type: string }
+        passportPhotoUploaded: { type: boolean }
+        passportPhotoUrl: { type: string }
+        guardianName: { type: string }
+        guardianType: { type: string }
+        guardianPhone: { type: string }
+        nextOfKinRelationship: { type: string }
+        isUgandan: { type: string }
+        applicationType: { type: string }
+        entryScheme: { type: string }
         programChoice1: { type: string }
         programChoice2: { type: string }
         programChoice3: { type: string }
+        programChoice4: { type: string }
+        assignedProgramme: { type: string }
+        totalWeightScore: { type: number }
+        qualificationResults: { type: string }
+        startDate: { type: string }
+        previousInstitution: { type: string }
+        highestQualification: { type: string }
+        academicCredentialLevel: { type: string }
+        academicCredentialsDetails: { type: string }
+        birthCertificateUrl: { type: string }
         studyMode: { type: string }
         academicYear: { type: string }
         semester: { type: string }
@@ -324,6 +379,47 @@ components:
         uaceResult: { type: string }
         documents: { type: string }
         extras: { type: string }
+        uceIndexNumber: { type: string }
+        uceYearOfSitting: { type: string }
+        uceSecondSitting: { type: boolean }
+        uceSecondIndexNumber: { type: string }
+        uceSecondYearOfSitting: { type: string }
+        uceTotalAggregates: { type: string }
+        uceDivision: { type: string }
+        oLevelSchoolName: { type: string }
+        uaceIndexNumber: { type: string }
+        uaceYearOfSitting: { type: string }
+        uaceSecondSitting: { type: boolean }
+        uaceSecondIndexNumber: { type: string }
+        uaceSecondYearOfSitting: { type: string }
+        uaceTotalPoints: { type: string }
+        uacePrincipalSubjects: { type: string }
+        uaceGeneralPaperGrade: { type: string }
+        uaceIctOrSubMathSubject: { type: string }
+        uaceIctOrSubMathGrade: { type: string }
+        oLevelResultSlipUrl: { type: string }
+        aLevelResultSlipUrl: { type: string }
+        academicTranscriptUrl: { type: string }
+        nationalIdOrPassportUrl: { type: string }
+        countryIdDocumentUrl: { type: string }
+        refereeLetterUrl: { type: string }
+        personalStatementAttachmentUrl: { type: string }
+        oLevelSubjects: { type: string }
+        certificateSubjects: { type: string }
+        gpa: { type: string }
+        personalStatement: { type: string }
+        howDidYouHear: { type: string }
+        documentsConfirmed: { type: boolean }
+        transcriptUploaded: { type: boolean }
+        idUploaded: { type: boolean }
+        countryIdUploaded: { type: boolean }
+        recommendationUploaded: { type: boolean }
+        statementUploaded: { type: boolean }
+        applicationFeePaid: { type: boolean }
+        paymentMethod: { type: string }
+        paymentReference: { type: string }
+        interviewPreference: { type: string }
+        termsAccepted: { type: boolean }
         feePaid: { type: number }
         feeRequired: { type: number }
         feeCurrency: { type: string }
@@ -339,13 +435,40 @@ components:
         - phoneNumber
         - gender
         - dateOfBirth
+        - maritalStatus
         - nationality
+        - address
+        - postalAddress
+        - city
+        - postalCode
+        - country
         - district
         - subcounty
         - village
+        - hasNationalIdOrPassport
+        - birthCertificateOrNationalIdDetails
+        - passportPhotoUploaded
+        - passportPhotoUrl
+        - guardianName
+        - guardianType
+        - guardianPhone
+        - nextOfKinRelationship
+        - isUgandan
+        - applicationType
+        - entryScheme
         - programChoice1
         - programChoice2
         - programChoice3
+        - programChoice4
+        - assignedProgramme
+        - totalWeightScore
+        - qualificationResults
+        - startDate
+        - previousInstitution
+        - highestQualification
+        - academicCredentialLevel
+        - academicCredentialsDetails
+        - birthCertificateUrl
         - studyMode
         - academicYear
         - semester
@@ -359,6 +482,47 @@ components:
         - uaceResult
         - documents
         - extras
+        - uceIndexNumber
+        - uceYearOfSitting
+        - uceSecondSitting
+        - uceSecondIndexNumber
+        - uceSecondYearOfSitting
+        - uceTotalAggregates
+        - uceDivision
+        - oLevelSchoolName
+        - uaceIndexNumber
+        - uaceYearOfSitting
+        - uaceSecondSitting
+        - uaceSecondIndexNumber
+        - uaceSecondYearOfSitting
+        - uaceTotalPoints
+        - uacePrincipalSubjects
+        - uaceGeneralPaperGrade
+        - uaceIctOrSubMathSubject
+        - uaceIctOrSubMathGrade
+        - oLevelResultSlipUrl
+        - aLevelResultSlipUrl
+        - academicTranscriptUrl
+        - nationalIdOrPassportUrl
+        - countryIdDocumentUrl
+        - refereeLetterUrl
+        - personalStatementAttachmentUrl
+        - oLevelSubjects
+        - certificateSubjects
+        - gpa
+        - personalStatement
+        - howDidYouHear
+        - documentsConfirmed
+        - transcriptUploaded
+        - idUploaded
+        - countryIdUploaded
+        - recommendationUploaded
+        - statementUploaded
+        - applicationFeePaid
+        - paymentMethod
+        - paymentReference
+        - interviewPreference
+        - termsAccepted
         - feePaid
         - feeRequired
         - feeCurrency
@@ -380,6 +544,64 @@ components:
         totalPages:
           type: number
       required: [content, page, size, totalElements, totalPages]
+    AdmissionAssessment:
+      type: object
+      properties:
+        programmeCode: { type: ["string", "null"] }
+        modelRecommendation: { type: ["string", "null"], enum: [ADMIT, REVIEW, REJECT, null] }
+        decisionOfRecord: { type: string }
+        admissionIndex: { type: ["number", "null"] }
+        cutoffIndex: { type: ["number", "null"] }
+        oLevelIndex: { type: ["number", "null"] }
+        aLevelIndex: { type: ["number", "null"] }
+        scoringMode: { type: ["string", "null"] }
+        modelVersion: { type: ["string", "null"] }
+        dataQuality: { type: ["string", "null"] }
+        criteria:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              label: { type: string }
+              weight: { type: number }
+              rawPoints: { type: number }
+              weightedPoints: { type: number }
+              note: { type: string }
+        gates:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              label: { type: string }
+              category: { type: string }
+              passed: { type: boolean }
+              outcomeOnFailure: { type: string }
+              detail: { type: string }
+        reasons:
+          type: array
+          items: { type: string }
+        humanOutcome: { type: ["string", "null"] }
+        overrodeEngine: { type: ["boolean", "null"] }
+        evaluatedAt: { type: ["string", "null"], format: date-time }
+      required:
+        - programmeCode
+        - modelRecommendation
+        - decisionOfRecord
+        - admissionIndex
+        - cutoffIndex
+        - oLevelIndex
+        - aLevelIndex
+        - scoringMode
+        - modelVersion
+        - dataQuality
+        - criteria
+        - gates
+        - reasons
+        - humanOutcome
+        - overrodeEngine
+        - evaluatedAt
     ApplicationReviewInput:
       type: object
       properties:
@@ -388,5 +610,5 @@ components:
           enum: [admitted, rejected, waitlisted]
         notes:
           type: string
+          minLength: 1
       required: [reviewStatus, notes]
-

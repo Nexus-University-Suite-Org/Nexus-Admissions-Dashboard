@@ -197,6 +197,11 @@ public AdminLoginResponse changePassword(Long adminId, PasswordChangeRequest req
     }
 
     @Transactional
+    public List<NapBackendClient.NapAssessment> getAdmissionAssessments(Long id) {
+        return napClient.fetchAdmissionAssessments(id);
+    }
+
+    @Transactional
     public ApplicationResponse reviewApplication(Long id, ReviewRequest request) {
         String reviewStatus = request.reviewStatus();
         String notes = request.notes() != null ? request.notes() : null;

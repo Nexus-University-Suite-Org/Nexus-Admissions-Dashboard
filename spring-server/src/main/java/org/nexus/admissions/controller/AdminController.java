@@ -15,6 +15,7 @@ import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
 import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.facade.AdminFacade;
+import org.nexus.admissions.service.NapBackendClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -97,6 +98,11 @@ public class AdminController {
     @GetMapping("/applications/{id}")
     public ResponseEntity<ApplicationResponse> getApplication(@PathVariable Long id) {
         return ResponseEntity.ok(adminFacade.getApplicationById(id));
+    }
+
+    @GetMapping("/applications/{id}/assessment")
+    public ResponseEntity<List<NapBackendClient.NapAssessment>> getApplicationAssessment(@PathVariable Long id) {
+        return ResponseEntity.ok(adminFacade.getAdmissionAssessments(id));
     }
 
     @PutMapping("/applications/{id}/review")
