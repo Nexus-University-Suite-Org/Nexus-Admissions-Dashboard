@@ -22,6 +22,21 @@ interface TokenEndpointResponse {
   error_description?: string;
 }
 
+function waitForRequest(request: Promise<unknown>, timeoutMs = 1500): Promise<void> {
+  let timeout: number | undefined;
+  return Promise.race([
+    request.then(
+      () => undefined,
+      () => undefined,
+    ),
+    new Promise<void>((resolve) => {
+      timeout = window.setTimeout(resolve, timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  });
+}
+
 /**
  * Framework-agnostic OIDC client for the Nexus University suite.
  *
@@ -280,23 +295,36 @@ export class NexusAuthClient {
     const refreshToken = this.readStoredRefresh();
     if (refreshToken) {
       try {
-        await fetch(`${this.config.issuer}/oauth2/revoke`, {
+        await waitForRequest(fetch(`${this.config.issuer}/oauth2/revoke`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ token: refreshToken }),
-        });
+        }));
       } catch {
         // Best effort — clearing local state is what matters.
       }
     }
     this.clear();
 
-    const postLogout = `${window.location.origin}${returnTo ?? this.config.defaultReturnTo}`;
+    const postLogout = new URL(returnTo ?? this.config.defaultReturnTo, window.location.origin);
+    if (postLogout.origin !== window.location.origin) {
+      throw new Error('The sign-out return URL must stay on this application.');
+    }
+
     const params = new URLSearchParams({
       client_id: this.config.clientId,
-      post_logout_redirect_uri: postLogout,
+      post_logout_redirect_uri: postLogout.toString(),
     });
-    window.location.assign(`${this.config.issuer}/oauth2/logout?${params.toString()}`);
+    const logoutUrl = `${this.config.issuer}/oauth2/logout?${params.toString()}`;
+
+    // Keep the app on its local login page if the identity server is unavailable.
+    await waitForRequest(fetch(logoutUrl, {
+      mode: 'no-cors',
+      credentials: 'include',
+      cache: 'no-store',
+      keepalive: true,
+    }));
+    window.location.assign(postLogout.toString());
   }
 
   private clear(): void {
