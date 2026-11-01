@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Map;
 import org.nexus.admissions.configuration.JwtAuthFilter;
+import org.nexus.admissions.configuration.NexusIdentityTokenVerifier;
 import org.nexus.admissions.dto.AdminLoginRequest;
 import org.nexus.admissions.dto.AdminLoginResponse;
 import org.nexus.admissions.dto.AdminUpdateRequest;
@@ -12,9 +13,11 @@ import org.nexus.admissions.dto.DashboardStatsResponse;
 import org.nexus.admissions.dto.PaginatedApplicationsResponse;
 import org.nexus.admissions.dto.PasswordChangeRequest;
 import org.nexus.admissions.dto.ReviewRequest;
+import org.nexus.admissions.exception.UnauthorizedException;
 import org.nexus.admissions.facade.AdminFacade;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,9 +33,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 
     private final AdminFacade adminFacade;
+    private final NexusIdentityTokenVerifier identityTokenVerifier;
 
-    public AdminController(AdminFacade adminFacade) {
+    public AdminController(AdminFacade adminFacade,
+                           NexusIdentityTokenVerifier identityTokenVerifier) {
         this.adminFacade = adminFacade;
+        this.identityTokenVerifier = identityTokenVerifier;
     }
 
     @PostMapping("/auth/login")
@@ -40,14 +46,17 @@ public class AdminController {
         return ResponseEntity.ok(adminFacade.login(request));
     }
 
+    @PostMapping("/auth/sso")
+    public ResponseEntity<AdminLoginResponse> sso(
+            @RequestHeader("Authorization") String authorization) {
+        return ResponseEntity.ok(adminFacade.loginWithSso(
+                identityTokenVerifier.verifiedAdminEmail(authorization)));
+    }
+
     @GetMapping("/auth/me")
     public ResponseEntity<AdminLoginResponse> me(Authentication authentication) {
-        System.out.println("[ADMIN-CONTROLLER] /auth/me called | authentication=" + authentication);
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        System.out.println("[ADMIN-CONTROLLER] principal: id=" + principal.id() + ", email=" + principal.email());
-        AdminLoginResponse response = adminFacade.me(principal.id());
-        System.out.println("[ADMIN-CONTROLLER] /auth/me returning: email=" + response.email() + ", fullName=" + response.fullName());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(adminFacade.me(principal.id()));
     }
 
     @PutMapping("/auth/profile")
@@ -59,12 +68,11 @@ public class AdminController {
     }
 
     @PutMapping("/auth/password")
-    public ResponseEntity<Map<String, String>> changePassword(
+    public ResponseEntity<AdminLoginResponse> changePassword(
             Authentication authentication,
             @Valid @RequestBody PasswordChangeRequest request) {
         JwtAuthFilter.AdminPrincipal principal = (JwtAuthFilter.AdminPrincipal) authentication.getPrincipal();
-        adminFacade.changePassword(principal.id(), request);
-        return ResponseEntity.ok(Map.of("status", "ok", "message", "Password changed successfully."));
+        return ResponseEntity.ok(adminFacade.changePassword(principal.id(), request));
     }
 
     @GetMapping("/dashboard/stats")
