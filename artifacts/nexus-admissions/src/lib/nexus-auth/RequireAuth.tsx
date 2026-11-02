@@ -17,22 +17,25 @@ export interface RequireAuthProps {
  * sign-in experience identical across every portal.
  */
 export function RequireAuth({ children, roles, returnTo, fallback }: RequireAuthProps) {
-  const { status, user, login, hasRole } = useNexusAuth();
+  const { status, user, error, login, hasRole } = useNexusAuth();
 
   const authorised = status === 'authenticated' && user !== null
     && (!roles || hasRole(roles));
 
   useEffect(() => {
-    if (status === 'anonymous') {
+    if (status === 'anonymous' && !error) {
       void login(returnTo);
     }
-  }, [status, login, returnTo]);
+  }, [status, error, login, returnTo]);
 
   if (status === 'loading') {
     return <>{fallback ?? <AuthSplash label="Checking your session…" />}</>;
   }
 
   if (status === 'anonymous') {
+    if (error) {
+      return <>{fallback ?? <AuthFailure error={error} login={login} />}</>;
+    }
     return <>{fallback ?? <AuthSplash label="Taking you to sign in…" />}</>;
   }
 
@@ -41,6 +44,38 @@ export function RequireAuth({ children, roles, returnTo, fallback }: RequireAuth
   }
 
   return <>{children}</>;
+}
+
+function AuthFailure({ error, login }: { error: Error; login: () => Promise<void> }) {
+  return (
+    <div style={{
+      minHeight: '60vh',
+      display: 'grid',
+      placeItems: 'center',
+      padding: 24,
+      fontFamily: 'system-ui, sans-serif',
+    }}>
+      <div style={{ maxWidth: 420, textAlign: 'center' }}>
+        <h1 style={{ fontSize: 20, marginBottom: 8 }}>Sign-in could not be completed</h1>
+        <p style={{ color: '#64748b', lineHeight: 1.6 }}>{error.message}</p>
+        <button
+          type="button"
+          onClick={() => void login()}
+          style={{
+            marginTop: 12,
+            padding: '10px 18px',
+            borderRadius: 10,
+            border: '1px solid #cbd5e1',
+            background: '#fff',
+            cursor: 'pointer',
+            fontSize: 14,
+          }}
+        >
+          Try again
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function AuthSplash({ label }: { label: string }) {

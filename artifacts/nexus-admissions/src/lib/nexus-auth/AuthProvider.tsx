@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -51,12 +50,8 @@ export function AuthProvider({ config, children, fallback = null }: AuthProvider
   const [status, setStatus] = useState<NexusAuthStatus>('loading');
   const [user, setUser] = useState<NexusUser | null>(null);
   const [error, setError] = useState<Error | null>(null);
-  const bootstrapped = useRef(false);
 
   useEffect(() => {
-    if (bootstrapped.current) return;
-    bootstrapped.current = true;
-
     let cancelled = false;
     const unsubscribe = client.subscribe(() => {
       if (cancelled) return;
